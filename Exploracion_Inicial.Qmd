@@ -1,0 +1,643 @@
+---
+title: "Proyecto Modelos de Regresión"
+subtitle: "Análisis Estadístico e Inferencial"
+author:
+    name: "Lucas Virgillito Tarrazó\nJosé Igual Ávila\nMarc Mollá Lillo"
+    email: "lvirtar@upv.edu.es"
+    affiliation:
+        name: "Universidad Politécnica de Valencia (UPV)"
+        city: "Valencia"
+        country: "Spain" 
+date: "today"
+lang: es-ES
+
+#bibliography: references.bib
+#link-citations: true
+csl: apa.csl # Descargar archivo en https://www.zotero.org/styles?q=apa
+#cite-method: citeproc
+#nocite: |
+#  @R_Programming
+#  @R_Coder
+
+format:
+  html:
+    theme: cosmo
+    dark: darkly
+    toc: true
+    code-copy: true
+    code-fold: true # ver el código
+    code-tools: true
+    code-summary: "Ver código" # texto label ver código
+    highlight-style: github
+    embed-resources: true
+    format-links: false 
+    #css: style.css # Descomentar si usas un archivo CSS personalizado
+
+# quarto render nombre_archivo.qmd --to all
+  pdf: 
+    documentclass: scrartcl
+    papersize: letter
+    number-sections: true
+    colorlinks: true
+    geometry: 
+      - top=30mm
+      - left=20mm
+      - bottom=30mm
+      - right=20mm
+    
+    include-in-header: 
+      text: |
+        \usepackage{float}
+        \makeatletter
+        \def\fps@figure{H} 
+        \makeatother
+---
+
+```{r setup, include=FALSE}
+# 1. Configuración de Knitr
+knitr::opts_chunk$set(
+  echo = TRUE,          # FALSE para ocultar el código en el documento final
+  message = FALSE,      # Silencia los mensajes de carga de paquetes
+  warning = FALSE,      # Silencia las advertencias (warnings)
+  fig.align = "center", # Centra todos los gráficos automáticamente
+  out.width = "85%"     # Tamaño estándar para imágenes en HTML/PDF
+)
+
+# 2. Opciones de R (Globales)
+options(
+  scipen = 999,                  # Desactiva la notación científica (ej. 1e-04)
+  digits = 3,                    # Muestra un máximo de 3 decimales
+  encoding = "UTF-8",            # Fuerza la lectura correcta de caracteres especiales (ñ, tildes)
+  dplyr.summarise.inform = FALSE # Silencia el molesto mensaje de "groups" al usar summarise()
+)
+
+# 3. Carga de librerías base
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, janitor, gt, gtExtras, naniar, dplyr, moments, skimr, hexbin) 
+#library() # Descomentar en caso de uso (no funcionan las librerías con pacman)
+
+# Nota: janitor es extremadamente útil para estandarizar variables; usar: df <- df %>% clean_names()
+
+# 4. Configuración Estética Global
+theme_set(theme_minimal()) # Todos los gráficos ggplot2 usarán theme_minimal() por defecto
+```
+
+# 1. Preparación y Limpieza
+
+```{r}
+datos <- readRDS("datos_refact.rds")
+```
+
+En este punto se realiza una exploración/auditoría incial del dataset. Previamente se hizo una refactorización, donde se realizo lo siguiente:
+
+## Gestión de archivos:
+
+Consulta de la descripción del dataset en Kaggle [Kaggle - Diabetes Health](https://www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset)
+
+  - Leer contenido e información del dataset
+
+  - Consulta información variables *(Data Dictionary)*
+
+Selección de dataset de trabajo
+  
+  - Se ha seleccionado el dataset de $250000$ registros al ser el más balanceado
+
+Identificación de registros / filas *(personas / individuos)*
+
+## Manipulación de archivos:
+
+Revisión del conjunto de variables
+Revisión de `NA values`
+
+Refactorización de variables
+  
+  - Renombrar variables
+  
+  - Refactorizar tipos y categorías de variables
+
+Creación nuevas variables
+  
+  - Se crea una variable nueva por nivel `(factor)` de edad: `edad_label` *(métrica más útil)*
+  
+  - Se crean dos variables nuevas por niveles `(factor)` de `salud_fisica` y `salud_mental` *(simplificar variables)*
+
+  - Se crea una variable nueva por nivel `(factor)` de `imc_valor` *(simplificar variable)*
+
+Ordenar el dataset por bloques 
+
+[Ver archivo inicial | Diabetes Health Indicators Dataset](Data_Sets/diabetes_012_health_indicators_BRFSS2015.csv)
+
+[Ver Archivo de Clasificación de Datos | Diabetes Health Refactorizado](Clasificacion_Datos.R)
+
+---
+
+---
+
+## Limpieza y Procesamiento
+
+### Tratamiento de `NAs` y `Valores Faltantes`
+
+  - **NA:**
+```{R}
+miss_var_summary(datos) %>%
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Valores NA")
+```  
+
+  - **Valores Faltantes:**
+```{R}
+datos %>% 
+  mutate(across(where(is.factor) | where(is.character),
+                ~ na_if(trimws(.x), ""))) %>% 
+  gg_miss_var() +
+  labs(title = "Visualización de Valores Faltantes y NA",
+       y = "Datos Perdidos",
+       x = "Variables")
+```
+
+Se verifica que el **dataset no tiene ningún valor faltante o NA**. Al ser un dataset famosos y de una plataforma como Kaggle es lógico qué esté completamente limpio.
+
+### Identificación de variables 
+
+- **Recuento de variables:**
+
+:::{.panel-tabset}
+## Total de variables (conteo)
+```{r}
+data.frame(Columnas = ncol(datos)) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Número total de columnas / variables") %>% 
+  cols_align(align = "center") %>% 
+  cols_label(Columnas = "Total de Columnas / Variables")
+```
+
+## Listado de variables (disponibles)
+```{r}
+data.frame(Variables = names(datos), Tipo = sapply(datos, class)) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Diccionario de Variables y Tipo") %>% 
+  cols_align(align = "center") %>% 
+  cols_label(Variables = "Nombre de la Variable", Tipo = "Tipo de Dato")
+```
+:::
+
+- **Recuento / diccionario de tipos de variables:**
+
+:::{.panel-tabset}
+## Variables numéricas ##
+```{r}
+datos %>%
+  select(where(is.numeric)) %>% 
+  summarise(across(everything(), ~ class(.x)[1])) %>% 
+  pivot_longer(everything(), names_to = "Variable", values_to = "Tipo") %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Diccionario de Variables Numéricas")
+``` 
+
+## Variables categóricas ##
+```{r}
+datos %>%
+  select(where(is.factor)) %>% 
+  summarise(across(everything(), ~ class(.x)[1])) %>% 
+  pivot_longer(everything(), names_to = "Variable", values_to = "Tipo") %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Diccionario de Variables Categóricas")
+```
+:::
+
+- En las tablas se observan el total de variables y tipos.
+
+## Selección y Filtrado
+
+Se opta por seleccionar el total de variables.
+
+Al ser un dataset famosos de Kaggle, el **nivel de variables y registros es adecuado**. No contiene variables ID, ruido, metainformación y otro tipo de variables no útiles.
+
+Por lo que, no se puede reducir el número de variables (`r ncol(datos)`). Reducir las variables en este caso sería algo precipitado. Podría ser útil para realizar un proyecto de enfoque único *(únicamente salud, únicamente economía y demografía, únicamente alimentación y consumos, etc.)*.
+
+:::{.callout-note}
+*En otro tipo de datasets (imagenes, web scraping) que no se obtienen de manera fácil y que tienen un nivel de limpieza mayor, este paso es crucial para **reducir las columnas** de manera considerable y trabajar sobre datasets mucho menores y con registros e información totalmente útil.*
+:::
+
+# 2. Análisis Descriptivo (ADD)
+
+## Estadística Descriptiva, Resumenes
+
+Se va a agrupar los datos y reducir información en números y porcentajes clave.
+
+Antes de proceder con el análisis detallado, se muestran unos resumenes técnicos generales:
+
+:::{.panel-tabset}
+## Resumen General
+```{r}
+#objeto_skim <- datos %>% skim()
+# 1. Creamos el objeto skim
+s <- skim(datos)
+
+# 2. Extraemos los metadatos manualmente para evitar el error de 0 columnas
+resumen_meta <- tibble(
+  Característica = c("Nombre del Dataset", "Número de filas", "Número de columnas"),
+  Valor = c(
+    "diabetes_012_health", # Captura el nombre de la variable
+    nrow(datos), 
+    ncol(datos)
+  )
+)
+# 3. Añadimos la frecuencia de tipos (opcional, para completar la auditoría)
+frecuencias_tipo <- s %>% 
+  group_by(skim_type) %>% 
+  tally() %>% 
+  mutate(skim_type = paste("Variables de tipo", skim_type)) %>% 
+  rename(Característica = 1, Valor = 2) %>% 
+  mutate(Valor = as.character(Valor))
+# 4. Unimos y presentamos
+resumen_meta %>% 
+  bind_rows(frecuencias_tipo) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(
+    title = "Resumen General",
+  )
+```
+## Resumen Variables Categóricas
+```{r}
+datos %>% 
+  skim(where(is.factor)) %>% 
+  as_tibble() %>% 
+  select(-skim_type, -n_missing, -complete_rate, -factor.ordered) %>% # quitar columnas
+  rename(
+    "Variable" = skim_variable,
+    #"Variable Completa" = complete_rate, # 0 = todo NA; 1 = ningún NA
+    #"Ordenado" = factor.ordered,
+    "Niveles" = factor.n_unique,
+    "Conteos (Resumen)" = factor.top_counts
+  ) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Resumen Variables Categóricas") %>% 
+  tab_options(
+    table.font.size = px(12),         # Reduce el texto interior
+    data_row.padding = px(2),         # Reduce el espacio entre filas para compactar
+    column_labels.font.size = px(13)  # Tamaño específico para encabezados
+  )
+```
+:::{.column-margin}
+Oberservar que el resumen de **Variables Categóricas no tiene orden de niveles**. Esto se intencional, realmente los niveles están ordenados, pero para no realizar en *R* `ordered = TRUE`
+se deja tal cual con los `lavels = c()` definidos. Esto ayuda a que las **regresiones sean más fáciles.** 
+:::
+## Resumen V. Num.
+```{r}
+datos %>% 
+  skim(where(is.numeric)) %>% 
+  as_tibble() %>% 
+  select(-skim_type, -n_missing, -complete_rate) %>% 
+  rename(
+    "Variable" = skim_variable,
+    "Media" = numeric.mean,
+    "Desv_Est" = numeric.sd,
+    "Min" = numeric.p0,
+    "P50_Mediana" = numeric.p50,
+    "Max" = numeric.p100,
+    "Histograma" = numeric.hist
+  ) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Resumen Variables Numéricas") %>% 
+  tab_options(
+    table.font.size = px(12),         # Reduce el texto interior
+    data_row.padding = px(2),         # Reduce el espacio entre filas para compactar
+    column_labels.font.size = px(13)  # Tamaño específico para encabezados
+  )
+```
+:::
+
+### Variables categóricas
+
+**Interacción Socioeconómica:** Las variables `nivel_de_educacion` y `nivel_de_ingresos` presentan distribuciones desbalanceadas hacia niveles altos. Un ANOVA de dos vías sería lo adecuado para ver el efecto del **estatus socioeconómico** frente a la salud.
+
+**Edad**: Debido a su distribución (sesgo negativo) y relevancia en tipo de dato, la edad sería extremadamente útil como variable predictora en modelos de regresión, permitiendo aislar el efecto real del IMC sobre la diabetes.
+
+**Factores de Riesgo y Hábitos (Binarios)**: Se conservan todas las variables binarias para el análisis inicial. Dependiendo el análisis y enfoque estadístico, todas las variables son útiles en unos casos y otros. No se obvia ninguna al tener alta diversidad y enfoques distintos.
+
+**Indicadores de Salud**: Existe una similitud en la distribución de las variables de salud (general, física y mental), lo que puede sugerir una correlación. Estas se integrarán en modelos multivariantes para evaluar su peso relativo en el bienestar del paciente.
+
+**Variable Objetivo (Diabetes)**: A pesar del desbalanceo de clases, el volumen de registros en el grupo de diabéticos es estadísticamente robusto. Factor clave en el ANOVA frente al IMC y las métricas de salud, buscando identificar diferencias de medias significativas.
+
+*Información detallada de análisis de variables: [Análisis Descriptivo de Variables Categóricas](ADD_variables_cat.R)*
+
+### Variables numéricas
+
+**IMC:** El `imc_valor` presenta una tendencia central estable (media y mediana similares), pero con una curtosis muy elevada (14.0 >> 3). Esto define una distribución leptocúrtica de "colas pesadas", donde predominan los valores de obesidad. Esto confirma la división en `imc_cat`, donde se observa que más del 70% de la muestra se sitúa en rangos de Sobrepeso y Obesidad. La baja dispersión es extremadamente útil para el [ANOVA](#pruebas-de-hipótesis-anova).
+
+**Salud física y Mental:** Ambas variables tienen el MAD y mediana en 0, lo que indica que el 50% de los datos son gente sana. La asimetría positiva lo confirma, y la mayoría de datos estan centrados en la zona izquierda, 
+teniendo una distribución de cola larga / sesgada. Validando con `salud_fisica_cat` y `salud_mental_cat`, los grupos críticos son los de menor cantidad de registros (los que tienen `Problemas Crónicos`), los más útiles para el estudio estadístico de diabetes.
+
+**Edad:** La edad presenta una distribución platicúrtica, con una curva prácticamente plana / constante. Teniendo una dispersión mínima de datos. Sesgada negativamente, validado con la variable `edad_cat`; teniendo un 57.7% de la muestra entre los 50 y 70 años observada en edad_label. Extremadamente útil para regresiones por la baja dispersión y ausencia de outilers influyentes.
+
+:::{.callout-note}
+*La creación de variables categóricas derivadas de las numéricas, facilita mucho más el análisis estadístico.*
+:::
+
+*Información detallada de análisis de variables: [Análisis Descriptivo de Variables Numéricas](ADD_variables_num.R)*
+
+---
+
+---
+
+# 3. Análisis Exploratorio (AED)
+
+Se van a visualizar las conclusiones sacadas en el apartado anterior [ADD](#análisis-descriptivo-(add)). Facilitando de esta forma el análisis estadístico con gráficos univariantes y bivariantes.
+
+## Visualización de Datos
+
+### Gráficos de Barras:
+
+:::{.panel-tabset}
+## Diabetes
+```{r}
+datos %>% 
+  ggplot(aes(x = diabetes,
+             fill = diabetes,
+             color = diabetes)) +
+        scale_y_continuous(labels = scales::comma) + # Eje Y más legible
+        geom_bar(alpha = .5, show.legend = FALSE) +
+        labs(title = "Gráfico de Barras Diabetes",
+             x = "Tipos de Diabetes",
+             y = "Frecuencias de casos") +
+        theme_minimal()
+```
+## Índice de Masa Corporal (IMC)
+```{r}
+datos %>% 
+  ggplot(aes(x = imc_cat,
+             fill = imc_cat,
+             color = imc_cat)) +
+        scale_y_continuous(labels = scales::comma) + # Eje Y más legible
+        geom_bar(alpha = .5, show.legend = FALSE) +
+        labs(title = "Gráfico de Barras IMC (categorías)",
+             x = "Divisiones de IMC",
+             y = "Frecuencias de casos") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 9))
+```
+## Edades (por intervalos)
+```{r}
+datos %>% 
+  ggplot(aes(x = edad_label)) +
+  geom_bar(fill = "steelblue", alpha = 0.8) +
+  labs(title = "Distribución de la Población por Rangos de Edad",
+       x = "Intervalos de Edad",
+       y = "Frecuencia Absoluta") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+## Variables Binarias
+```{r}
+datos %>%
+  select(presion_arterial_alta, colesterol_alto, chequeo_colesterol, ataque_cerebral, 
+         ataque_cardiaco, actividad_fisica, consumo_de_fruta, consumo_de_verduras, 
+         consumo_de_alcohol_alto, seguro_medico, no_acudir_al_medico_por_coste, 
+         dificultad_caminar, fumador) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Respuesta") %>%
+  group_by(Variable, Respuesta) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Variable) %>%
+  mutate(Porcentaje = n / sum(n)) %>%
+  filter(Respuesta == "Sí") %>%
+  ggplot(aes(x = reorder(Variable, Porcentaje), y = Porcentaje, fill = Porcentaje)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1) +  
+  labs(title = "Factores de Riesgo y Hábitos",
+       subtitle = "Porcentaje de respuestas 'Sí' por variable",
+       x = NULL,
+       y = "Porcentaje de la Población") +
+  theme_minimal()
+```
+:::
+:::{.column-margin}
+Apreciamos de una manera mucho más clara la distrbibución de estas variables y sus clases. Viendo la **gran cantidad de personas no diabéticas**, y la **gran cantidad de personas con sobrepeso y obesidad**. Se observan los **intervalos de edades** y las diferentes **variables binarias** con valor `Sí`.
+:::
+
+### Diagramas de Caja
+
+:::{.panel-tabset}
+## 
+```{r}
+
+```
+:::
+:::{.column-margin}
+
+:::
+
+## Análisis de Correlación/Relación
+
+### Diabetes y IMC
+
+:::{.panel-tabset}
+## Distribución IMC según estado de Diabetes
+```{r}
+datos %>% 
+  ggplot(aes(x = diabetes,
+             y = imc_valor,
+             fill = diabetes)) + # 'fill' colorea el interior; 'color' colorearía solo los bordes
+        geom_boxplot(alpha = .5, show.legend = FALSE) +
+        labs(title = "Distribución IMC según estado de Diabetes",
+             x = "Diabetes",
+             y = "Índice de Masa Corporal (IMC)") +
+        theme_minimal() +
+        stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "white")
+```
+## IMC según Diabetes
+```{r}
+datos %>% 
+  ggplot(aes(x = diabetes, fill = imc_cat)) +
+  geom_bar(position = "fill", alpha = 0.8) + # probar "dodge"
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(palette = "YlOrRd") +
+  labs(
+    title = "Composición del IMC según Estado de Diabetes",
+    subtitle = "Análisis bivariante de proporciones relativas",
+    x = "Diagnóstico de Diabetes",
+    y = "Porcentaje (%)",
+    fill = "Categoría IMC"
+  ) +
+  theme_minimal()
+```
+:::
+:::{.column-margin}
+Se observa solapamiento en el nivel de IMC según diabetes, pero con aumento: **a mayor IMC más propenso a ser diabético, mayor aumento de media**.
+:::
+
+## Estados Salud y Niveles Socioeconómico
+
+:::{.panel-tabset}
+## Indicadores de Salud
+```{r}
+
+datos %>%
+  # Seleccionamos las tres y las pasamos a formato largo
+  select(salud_general, salud_fisica_cat, salud_mental_cat) %>%
+  pivot_longer(everything(), names_to = "Dimension", values_to = "Nivel") %>%
+  # Graficamos
+  ggplot(aes(x = Nivel, fill = Dimension)) +
+  geom_bar(show.legend = FALSE, alpha = 0.7) +
+  facet_wrap(~Dimension, scales = "free_x") + # Cada una con su eje X
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Distribución de los Estados de Salud",
+       subtitle = "Comparativa de Salud General, Física y Mental",
+       x = "Nivel de Salud / Frecuencia de Problemas",
+       y = "Número de Registros") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+## Nivel de educación e ingresos
+```{r}
+datos %>% 
+  ggplot(aes(x = nivel_de_educacion, fill = nivel_de_ingresos)) +
+  geom_bar(position = "fill", alpha = 0.8) + # probar "dodge"
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(palette = "Greens") +
+  labs(
+    title = "Relación entre Nivel de Educación e Ingresos",
+    subtitle = "Distribución de frecuencias absolutas",
+    x = "Nivel de Estudios",
+    y = "Ingresos (en miles)",
+    fill = "Rangoo de Ingresos"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+:::
+:::{.column-margin}
+Se confirma la **relación en los estados de Salud**: mayoría de datos en zona izquierda. 
+Se confirma la **relación socioeconómica**: a mayor nivel educativo, existe una mayor concentración de individuos en los rangos de ingresos superiores (más de 75k)
+:::
+
+## Detección de Atípicos
+
+Respecto a las variables numéricas, las únicas variables que pueden presentar outliers influyentes son: `salud_fisica` y `salud_mental`. Esto se obtiene de forma rápida calculando los estadísticos básicos y observando la **media** y **mediana**. 
+
+:::{.callout}
+**Obtener estadísticos de manera detallada:**
+
+- [Análisis Descriptivo de Variables Numéricas](ADD_variables_num.R)
+:::
+
+
+---
+
+---
+
+# 4. Análisis Estadístico e Inferencia
+
+::: {.list-table caption="Análisis a realizar (comparativa)"}
+
+- - **Característica** 
+  
+  - ANOVA
+  
+  - Regresión
+
+- - **Variable Independiente (Factor)**
+
+  - Categórica (Niveles o Grupos)
+
+  - Numérica (Continua o Discreta)
+
+- - **Variable Dependiente (Respuesta)**
+
+  - Numérica (Continua o Discreta)
+
+  - Numérica (Continua o Discreta)
+
+- - **Objetivo Principal**
+
+  - Comparar medias entre los diferentes grupos o niveles del factor.
+
+  - Relacionar y Predecir el cambio en la respuesta ante cambios en el predictor.
+
+:::
+
+##  Evaluación de Supuestos
+
+## Pruebas de Hipótesis: ANOVA 
+
+- **Variable Objetivo:** `diabetes`
+
+```{r}
+datos %>% 
+  select(diabetes) %>%
+  distinct() %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Niveles de Variable Objetivo") %>% 
+  cols_label(diabetes = "Diabetes")
+```
+:::{.column-margin}
+*Tabla con los distintos grupos de la variable.*
+:::
+
+Esta es la variable que más sentido tiene como variable objetivo a analizar (al estar trabajando en un dataset de **diabetes**), será nuestro factor al ser una variable categórica. Con ella, se podrá ver si los distintos grupos de esta variable son iguales o no en base a nuestra variable de respuesta, obteniendo conclusiones de que puede afectar a la diabetes. **Es la variable clave de este análisis estadístico.**
+
+- **Variable Numérica:** `imc_valor`
+
+::: {.panel-tabset}
+## Intervalos de salud física
+```{r}
+datos %>% 
+  select(imc_cat) %>%
+  distinct() %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Intervalos de Distribución de IMC", 
+             subtitle = "Ayuda en Visualización e Interpretación de valores") %>% 
+  cols_label(imc_cat = "IMC por Categorías / Intervalos")
+```
+## Valores y Frecuencia de salud física
+```{r}
+datos %>% 
+  group_by(imc_valor) %>% 
+  summarise(
+    Frequency_Abs = n(),
+    .groups = "drop"
+  ) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>%
+  tab_header(title = "Valores y Conteo del IMC") %>% 
+  cols_label(imc_valor = "Índice de Masa Corporal (kg/altura)",
+             Frequency_Abs = "Frecuencia Absoluta")
+```
+:::
+:::{.column-margin}
+Tabla con los recuentos básicos de la variable `imc_valor`, para observar los valores y recuentos básicos $\text{Frecuencia Absoluta}$.
+
+Tabla con los **niveles / categorías / intervalos** de la variable `imc_cat` para **ayudar a la visualización de sus valores numéricos**; dividido en 4 categorías.
+:::
+
+Se ha seleccionado el **índice de masa corporal (kg/altura)** que tienen las diferentes personas (registros). De forma anticipada puede ser la variable que tenga mayor relevancia sobre la diabetes, ya que el sobrepeso es un factor que influye altamente sobre la aparición de diabetes *(de tipo 2)*.
+Aún así, la **selección de variable numérica puede ser más relativa y variar**, al haber un total de $4 \text{ variables numéricas}$ que pueden tener una relevancia elevada sobre nuestra variable objetivo/factor `diabetes`. 
+
+::: {.callout-tip appearance="simple"}
+*Posteriormente se eligirán las otras variables numéricas, para observar los diferentes resultados entre ANOVA. Pudiendo comparar los niveles de significancia sobre el factor `diabetes`*
+:::
+
+Las variables para el análisis entonces son:
+
+  - **Variable Factor:** `diabetes`
+
+  - **Variable Respuesta:** `imc_valor`
+
+```{r}
+anova_1 <- datos %>% 
+  select(diabetes, imc_valor)
+```
+
+## Modelado Predictivo: Regresión Lineal y Múltiple
