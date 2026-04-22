@@ -422,19 +422,11 @@ datos %>%
 ```
 :::
 :::{.column-margin}
-Apreciamos de una manera mucho más clara la distrbibución de estas variables y sus clases. Viendo la **gran cantidad de personas no diabéticas**, y la **gran cantidad de personas con sobrepeso y obesidad**. Se observan los **intervalos de edades** y las diferentes **variables binarias** con valor `Sí`.
-:::
+Apreciamos de una manera mucho más clara la distrbibución de estas variables y sus clases. Viendo la **gran cantidad de personas no diabéticas**, y la **gran cantidad de personas con sobrepeso y obesidad**. 
 
-### Diagramas de Caja
+Se observan los **intervalos de edades**, mostrando esa distribución prácticamente constante mencionada previamente *(distribución platicúrtica)* y la concetración de datos  57.7% de la muestra entre los 50 y 70. 
 
-:::{.panel-tabset}
-## 
-```{r}
-
-```
-:::
-:::{.column-margin}
-
+El último gráfico muestra las diferentes **variables binarias** con valor `Sí` de manera ordenada, resaltando los factores de riesgo y hábitos frente a nuestra variable objetivo `diabetes`, se confirma de manera más sencilla que un descarte de estas variables sería algo precepitado, ya que la distribución de sus datos pueden servir dependiendo el análisis estdadístico / inferencial a realizar.
 :::
 
 ## Análisis de Correlación/Relación
@@ -518,19 +510,58 @@ datos %>%
 :::
 :::{.column-margin}
 Se confirma la **relación en los estados de Salud**: mayoría de datos en zona izquierda. 
+
 Se confirma la **relación socioeconómica**: a mayor nivel educativo, existe una mayor concentración de individuos en los rangos de ingresos superiores (más de 75k)
 :::
 
 ## Detección de Atípicos
 
-Respecto a las variables numéricas, las únicas variables que pueden presentar outliers influyentes son: `salud_fisica` y `salud_mental`. Esto se obtiene de forma rápida calculando los estadísticos básicos y observando la **media** y **mediana**. 
+### Variables numéricas
+
+Respecto a las variables numéricas, las únicas variables que pueden presentar outliers influyentes son: `salud_fisica` y `salud_mental`. Esto se obtiene de forma rápida calculando los estadísticos básicos y observando la **media** y **mediana** (calculada sobre otro archivo). 
+
+Por lo que únicamente se va a realizar la Regla de Tukey para detección de ouliers (Rango Intercuartilico - IQR):
+
+```{r}
+# Salud Física
+q3_fis <- quantile(datos$salud_fisica, 0.75, na.rm = TRUE)
+iqr_s_fis <- IQR(datos$salud_fisica, na.rm = TRUE)
+lim_sup_fis <- q3_fis + (1.5 * iqr_s_fis)
+
+# Salud Mental
+q3_men <- quantile(datos$salud_mental, 0.75, na.rm = TRUE)
+iqr_s_men <- IQR(datos$salud_mental, na.rm = TRUE)
+lim_sup_men <- q3_men + (1.5 * iqr_s_men)
+```
+
+Se observa que el valor del IQR es: 
+
+- `salud_fisica`:  `r iqr_s_fis` este valor nos indica el 50% de los datos central (eliminando el 25% inferior y superior). Siendo el límite superior `r lim_sup_fis`.
+
+- `salud_mental`: `r iqr_s_men` este valor nos indica que el 50% de los datos (eliminando el 25% inferior y superior) están en ese valor. Siendo el límite superior `r lim_sup_men`
+
+Estos IQR muestra que la gran mayoría de datos se situan en valores de días bajos, indicando que gran parte de los datos serían outliers. Por lo que no se pueden eliminar outliers, ya que se eliminarian gran cantidad de datos y no tendría sentido (al tener los valores entre un intervalo de días de $[0, 30]$). 
+
+**Estos datos son relevantes, por lo que no se puede eliminar ningún outlier.**
+
+### Variables categóricas
+
+Se ha realizado un análisis previo de cada variable mediante tablas de frecuencias. Las variables con **clases minoritarias** son:
+
+- `nivel_de_educacion` para el nivel `Sin Estudios` siendo un 0.1% del total de registros (174 registros). No se puede eliminar al ser un dato relevante a nivel socioeconómico 
+- `imc_cat` para los intervalos `Bajo peso (IMC < 18.5)` siendo un 1.2% del total de registros (3127 registros). No se puede eliminar tampoco, al ser una cantidad de registros minoritaría pero no anómala.
+
+**Aun así, estos datos son relevantes, por lo que no se pueden eliminar.**
 
 :::{.callout}
 **Obtener estadísticos de manera detallada:**
 
 - [Análisis Descriptivo de Variables Numéricas](ADD_variables_num.R)
+
+- [Análisis Descriptivo de Variables Categóricas](ADD_variables_cat.R.R)
 :::
 
+*Es normal no tener ningún outlier atípico al ser un dataset famoso.*
 
 ---
 
@@ -567,6 +598,10 @@ Respecto a las variables numéricas, las únicas variables que pueden presentar 
 :::
 
 ##  Evaluación de Supuestos
+
+### Supuestos ANOVA
+
+### Supuestos Regresión
 
 ## Pruebas de Hipótesis: ANOVA 
 
@@ -625,7 +660,7 @@ Tabla con los **niveles / categorías / intervalos** de la variable `imc_cat` pa
 Se ha seleccionado el **índice de masa corporal (kg/altura)** que tienen las diferentes personas (registros). De forma anticipada puede ser la variable que tenga mayor relevancia sobre la diabetes, ya que el sobrepeso es un factor que influye altamente sobre la aparición de diabetes *(de tipo 2)*.
 Aún así, la **selección de variable numérica puede ser más relativa y variar**, al haber un total de $4 \text{ variables numéricas}$ que pueden tener una relevancia elevada sobre nuestra variable objetivo/factor `diabetes`. 
 
-::: {.callout-tip appearance="simple"}
+::: {.callout}
 *Posteriormente se eligirán las otras variables numéricas, para observar los diferentes resultados entre ANOVA. Pudiendo comparar los niveles de significancia sobre el factor `diabetes`*
 :::
 
@@ -641,3 +676,54 @@ anova_1 <- datos %>%
 ```
 
 ## Modelado Predictivo: Regresión Lineal y Múltiple
+
+```{r}
+# Modelo logístico binomial
+library(tidyverse)
+library(forcats) # Se carga con tidyverse, pero por si acaso
+
+datos_limpios <- datos %>%
+  mutate(
+    diabetes_binaria = fct_collapse(diabetes,
+      "Diabético" = c("1", "2"),      # Une el nivel 1 y el 2 en uno solo
+      "No diabético" = "0"            # El nivel 0 se queda como No diabético
+    )
+  )
+
+# VERIFICACIÓN CRUCIAL:
+# Esto DEBE mostrarte cuántos hay en cada grupo. Si sale 0, algo va mal.
+table(datos_limpios$diabetes_binaria)
+
+# Ejecutar el modelo logístico
+modelo <- glm(diabetes_binaria ~ imc_valor + edad_int, 
+              data = datos_limpios, 
+              family = "binomial")
+
+summary(modelo)
+```
+
+```{r}
+# Instalación si no los tienes:
+# install.packages("ggcorrplot")
+
+library(ggcorrplot)
+
+# 1. Calculamos la matriz de correlación (solo variables numéricas)
+matriz_corr <- cor(datos %>% select(where(is.numeric)), use = "complete.obs")
+
+# 2. Creamos el Heatmap
+ggcorrplot(matriz_corr, 
+           hc.order = TRUE,           # Ordena las variables por similitud
+           type = "lower",            # Muestra solo la mitad inferior (opcional)
+           lab = TRUE,                # annot=True de Python
+           colors = c("#FFEB3B", "#FF9800", "#F44336"), # Paleta YlOrRd
+           title = "Correlation of features") +
+  theme(plot.title = element_text(hjust = 0.5)) # Centrar título
+```
+
+```{r}
+plot(modelo, 4) #
+datos$d_cook <- cooks.distance(modelo)
+which(datos$d_cook > 1)
+```
+
