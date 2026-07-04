@@ -2,8 +2,7 @@
 
 [![R](https://img.shields.io/badge/R-276DC3?style=for-the-badge&logo=r&logoColor=white)](https://www.r-project.org/)
 [![Quarto](https://img.shields.io/badge/Quarto-39729E?style=for-the-badge&logo=quarto&logoColor=white)](https://quarto.org/)
-[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/)
-[![Dataset Kaggle](https://img.shields.io/badge/Dataset-Kaggle-20BEFF?style=for-the-badge&logo=kaggle&logoColor=white)](https://www.kaggle.com/)
+[![Dataset Kaggle](https://img.shields.io/badge/Dataset-Kaggle-20BEFF?style=for-the-badge&logo=kaggle&logoColor=white)]([https://www.kaggle.com/](https://www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset))
 
 Repositorio del trabajo de análisis estadístico e inferencial sobre el dataset **Diabetes Health Indicators** de Kaggle. El proyecto está desarrollado en **R** y **Quarto**, y combina preparación de datos, refactorización de variables, análisis descriptivo y generación de informe en HTML/PDF.
 
