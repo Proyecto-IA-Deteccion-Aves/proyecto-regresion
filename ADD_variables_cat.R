@@ -178,7 +178,7 @@ datos %>%
   tab_header(title = "Clases de IMC (Intervalos)",
              subtitle = "Clases/Intervalos de IMC, Frecuencias Relativas y Acumuladas") %>%
   fmt_percent(columns = c(Frequency_Rel, Frequency_Rel_Accumulate), decimals = 1) %>%
-  cols_label(imc_cat = "Salud Física",
+  cols_label(imc_cat = "Intervalos IMC",
              Frequency_Abs = "Frecuencia Absoluta", 
              Frequency_Abs_Accumulate = "Frecuencia Absoluta Acumulada",
              Frequency_Rel = "Frecuencia Relativa",

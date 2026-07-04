@@ -1,0 +1,1577 @@
+---
+title: "Proyecto Modelos de Regresión"
+subtitle: "Análisis Estadístico e Inferencial"
+author:
+  - name: "Lucas Virgillito Tarrazó"
+  - name: "José Igual Ávila"
+  - name: "Marc Mollá Lillo"
+    email: "lvirtar@upv.edu.es"
+    affiliation:
+      name: "Universidad Politécnica de Valencia (UPV)"
+      city: "Valencia"
+      country: "Spain" 
+date: "today"
+lang: es-ES
+
+bibliography: references.bib
+link-citations: true
+csl: apa.csl
+nocite: |
+  @wickham2023,
+  @R_Programming,
+  @R_Coder,
+  @posit,
+  @rpubs,
+  @bruce2022
+
+format:
+  html:
+    theme:
+      light: cosmo
+      dark: darkly
+    toc: true
+    code-copy: true
+    code-fold: true
+    code-tools: true
+    code-summary: "Ver código"
+    highlight-style: github
+    embed-resources: true
+    format-links: false 
+  pdf:
+    toc: true
+    documentclass: scrartcl
+    papersize: letter
+    number-sections: true
+    colorlinks: true
+    geometry: 
+      - top=30mm
+      - left=20mm
+      - bottom=60mm
+      - right=45mm
+    include-in-header: 
+      text: |
+        \usepackage{float}
+        \makeatletter
+        \def\fps@figure{H} 
+        \makeatother
+---
+```{r setup, include=FALSE}
+# 1. Configuración de Knitr
+knitr::opts_chunk$set(
+  echo = TRUE,          # FALSE para ocultar el código en el documento final
+  message = FALSE,      # Silencia los mensajes de carga de paquetes
+  warning = FALSE,      # Silencia las advertencias (warnings)
+  fig.align = "center", # Centra todos los gráficos automáticamente
+  out.width = "85%"     # Tamaño estándar para imágenes en HTML/PDF
+)
+
+# 2. Opciones de R (Globales)
+options(
+  scipen = 999,                  # Desactiva la notación científica (ej. 1e-04)
+  digits = 3,                    # Muestra un máximo de 3 decimales
+  encoding = "UTF-8",            # Fuerza la lectura correcta de caracteres especiales
+  dplyr.summarise.inform = FALSE # Silencia el molesto mensaje de "groups" al usar summarise()
+)
+
+# 3. Carga de librerías base
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, janitor, gt, gtExtras, naniar, dplyr, moments, skimr, hexbin) 
+#library() # Descomentar en caso de uso (no funcionan las librerías con pacman)
+
+# Nota: janitor es extremadamente útil para estandarizar variables
+# df <- df %>% clean_names()
+
+# 4. Configuración Estética Global
+theme_set(theme_minimal()) # Todos los gráficos ggplot2 usarán theme_minimal() por defecto
+```
+
+# 0. Elección del Dataset
+
+La selección de este reconocido conjunto de datos de Kaggle se fundamenta en una doble motivación. A nivel técnico, supuso un desafío analítico de gran envergadura, al ser nuestro primer acercamiento a un volumen de información tan masivo (aproximadamente 250.000 registros independientes). Este dataset constituye un entorno de referencia internacional diseñado específicamente para que estudiantes, analistas junior y entusiastas de la ciencia de datos consoliden y amplíen sus habilidades prácticas.
+
+A nivel personal, el proyecto adquiere una dimensión especial para el equipo: nuestro compañero Marc Mollá Lillo convive con la diabetes. Esta realidad cercana nos sirvió de impulso fundamental para abordar el estudio no solo como un ejercicio metodológico, sino como una oportunidad genuina de profundizar en el conocimiento epidemiológico y comprender mejor los factores clínicos que rodean a esta patología.
+
+# 1. Preparación y Limpieza
+
+```{r}
+datos <- readRDS("datos_refact.rds")
+```
+
+En este punto se realiza una exploración/auditoría incial del dataset. Previamente se hizo una refactorización, donde se realizo lo siguiente:
+
+## Gestión de archivos:
+
+Consulta de la descripción del dataset en Kaggle [Kaggle - Diabetes Health](https://www.kaggle.com/datasets/alexteboul/diabetes-health-indicators-dataset)
+
+  - Leer contenido e información del dataset
+
+  - Consulta información variables *(Data Dictionary)*
+
+Selección de dataset de trabajo
+  
+  - Se ha seleccionado el dataset de $250000$ registros al ser el más balanceado
+
+Identificación de registros / filas *(personas / individuos)*
+
+## Manipulación de archivos:
+
+Revisión del conjunto de variables
+Revisión de `NA values`
+
+Refactorización de variables
+  
+  - Renombrar variables
+  
+  - Refactorizar tipos y categorías de variables
+
+Creación nuevas variables
+  
+  - Se crea una variable nueva por nivel `(factor)` de edad: `edad_label` *(métrica más útil)*
+  
+  - Se crean dos variables nuevas por niveles `(factor)` de `salud_fisica` y `salud_mental` *(simplificar variables)*
+
+  - Se crea una variable nueva por nivel `(factor)` de `imc_valor` *(simplificar variable)*
+
+Ordenar el dataset por bloques 
+
+[Ver archivo inicial | Diabetes Health Indicators Dataset](Data_Sets/diabetes_012_health_indicators_BRFSS2015.csv)
+
+[Ver Archivo de Clasificación de Datos | Diabetes Health Refactorizado](Clasificacion_Datos.R)
+
+---
+
+---
+
+## Limpieza y Procesamiento
+
+### Tratamiento de `NAs` y `Valores Faltantes`
+
+  - **NA:**
+```{r}
+miss_var_summary(datos) %>%
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Valores NA")
+```  
+
+  - **Valores Faltantes:**
+```{r}
+datos %>% 
+  mutate(across(where(is.factor) | where(is.character),
+                ~ na_if(trimws(.x), ""))) %>% 
+  gg_miss_var() +
+  labs(title = "Visualización de Valores Faltantes y NA",
+       y = "Datos Perdidos",
+       x = "Variables")
+```
+
+Se verifica que el **dataset no tiene ningún valor faltante o NA**. Al ser un dataset famoso y de una plataforma como Kaggle es lógico qué esté completamente limpio.
+
+### Identificación de variables 
+
+- **Recuento de variables:**
+
+:::{.panel-tabset}
+## Total de variables (conteo)
+```{r}
+data.frame(Columnas = ncol(datos)) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Número total de columnas / variables") %>% 
+  cols_align(align = "center") %>% 
+  cols_label(Columnas = "Total de Columnas / Variables")
+```
+
+## Listado de variables (disponibles)
+```{r}
+data.frame(Variables = names(datos), Tipo = sapply(datos, class)) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Diccionario de Variables y Tipo") %>% 
+  cols_align(align = "center") %>% 
+  cols_label(Variables = "Nombre de la Variable", Tipo = "Tipo de Dato")
+```
+:::
+
+- **Recuento / diccionario de tipos de variables:**
+
+:::{.panel-tabset}
+## Variables numéricas ##
+```{r}
+datos %>%
+  select(where(is.numeric)) %>% 
+  summarise(across(everything(), ~ class(.x)[1])) %>% 
+  pivot_longer(everything(), names_to = "Variable", values_to = "Tipo") %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Diccionario de Variables Numéricas")
+``` 
+
+## Variables categóricas ##
+```{r}
+datos %>%
+  select(where(is.factor)) %>% 
+  summarise(across(everything(), ~ class(.x)[1])) %>% 
+  pivot_longer(everything(), names_to = "Variable", values_to = "Tipo") %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Diccionario de Variables Categóricas")
+```
+:::
+
+- En las tablas se observan el total de variables y tipos.
+
+## Selección y Filtrado
+
+Se opta por seleccionar el total de variables.
+
+Al ser un dataset famosos de Kaggle, el **nivel de variables y registros es adecuado**. No contiene variables ID, ruido, metainformación y otro tipo de variables no útiles.
+
+Por lo que, no se puede reducir el número de variables (`r ncol(datos)`). Reducir las variables en este caso sería algo precipitado. Podría ser útil para realizar un proyecto de enfoque único *(únicamente salud, únicamente economía y demografía, únicamente alimentación y consumos, etc.)*.
+
+:::{.callout-note}
+*En otro tipo de datasets (imagenes, web scraping) que no se obtienen de manera fácil y que tienen un nivel de limpieza mayor, este paso es crucial para **reducir las columnas** de manera considerable y trabajar sobre datasets mucho menores y con registros e información totalmente útil.*
+:::
+
+# 2. Análisis Descriptivo (ADD)
+
+## Estadística Descriptiva, Resumenes
+
+Se va a agrupar los datos y reducir información en números y porcentajes clave.
+
+Antes de proceder con el análisis detallado, se muestran unos resumenes técnicos generales:
+
+:::{.panel-tabset}
+## Resumen General
+```{r}
+#objeto_skim <- datos %>% skim()
+# 1. Creamos el objeto skim
+s <- skim(datos)
+
+# 2. Extraemos los metadatos manualmente para evitar el error de 0 columnas
+resumen_meta <- tibble(
+  Característica = c("Nombre del Dataset", "Número de filas", "Número de columnas"),
+  Valor = c(
+    "diabetes_012_health", # Captura el nombre de la variable
+    nrow(datos), 
+    ncol(datos)
+  )
+)
+# 3. Añadimos la frecuencia de tipos (opcional, para completar la auditoría)
+frecuencias_tipo <- s %>% 
+  group_by(skim_type) %>% 
+  tally() %>% 
+  mutate(skim_type = paste("Variables de tipo", skim_type)) %>% 
+  rename(Característica = 1, Valor = 2) %>% 
+  mutate(Valor = as.character(Valor))
+# 4. Unimos y presentamos
+resumen_meta %>% 
+  bind_rows(frecuencias_tipo) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(
+    title = "Resumen General",
+  )
+```
+## Resumen Variables Categóricas
+```{r}
+datos %>% 
+  skim(where(is.factor)) %>% 
+  as_tibble() %>% 
+  select(-skim_type, -n_missing, -complete_rate, -factor.ordered) %>% # quitar columnas
+  rename(
+    "Variable" = skim_variable,
+    #"Variable Completa" = complete_rate, # 0 = todo NA; 1 = ningún NA
+    #"Ordenado" = factor.ordered,
+    "Niveles" = factor.n_unique,
+    "Conteos (Resumen)" = factor.top_counts
+  ) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Resumen Variables Categóricas") %>% 
+  tab_options(
+    table.font.size = px(12),         # Reduce el texto interior
+    data_row.padding = px(2),         # Reduce el espacio entre filas para compactar
+    column_labels.font.size = px(13)  # Tamaño específico para encabezados
+  )
+```
+::: {.content-visible when-format="html"}
+:::{.column-margin}
+Oberservar que el resumen de **Variables Categóricas no tiene orden de niveles**. Esto se intencional, realmente los niveles están ordenados, pero para no realizar en *R* `ordered = TRUE`
+se deja tal cual con los `lavels = c()` definidos. Esto ayuda a que las **regresiones sean más fáciles.** 
+:::
+:::
+
+::: {.content-visible when-format="pdf"}
+:::{.callout-note}
+Oberservar que el resumen de **Variables Categóricas no tiene orden de niveles**. Esto se intencional, realmente los niveles están ordenados, pero para no realizar en *R* `ordered = TRUE`
+se deja tal cual con los `lavels = c()` definidos. Esto ayuda a que las **regresiones sean más fáciles.** 
+:::
+:::
+
+## Resumen V. Num.
+```{r}
+datos %>% 
+  skim(where(is.numeric)) %>% 
+  as_tibble() %>% 
+  select(-skim_type, -n_missing, -complete_rate) %>% 
+  rename(
+    "Variable" = skim_variable,
+    "Media" = numeric.mean,
+    "Desv_Est" = numeric.sd,
+    "Min" = numeric.p0,
+    "P50_Mediana" = numeric.p50,
+    "Max" = numeric.p100,
+    "Histograma" = numeric.hist
+  ) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Resumen Variables Numéricas") %>% 
+  tab_options(
+    table.font.size = px(12),         # Reduce el texto interior
+    data_row.padding = px(2),         # Reduce el espacio entre filas para compactar
+    column_labels.font.size = px(13)  # Tamaño específico para encabezados
+  )
+```
+:::
+
+### Variables categóricas
+
+**Interacción Socioeconómica:** Las variables `nivel_de_educacion` y `nivel_de_ingresos` presentan distribuciones desbalanceadas hacia niveles altos. Un ANOVA de dos vías sería lo adecuado para ver el efecto del **estatus socioeconómico** frente a la salud.
+
+**Edad**: Debido a su distribución (sesgo negativo) y relevancia en tipo de dato, la edad sería extremadamente útil como variable predictora en modelos de regresión, permitiendo aislar el efecto real del IMC sobre la diabetes.
+
+**Factores de Riesgo y Hábitos (Binarios)**: Se conservan todas las variables binarias para el análisis inicial. Dependiendo el análisis y enfoque estadístico, todas las variables son útiles en unos casos y otros. No se obvia ninguna al tener alta diversidad y enfoques distintos.
+
+**Indicadores de Salud**: Existe una similitud en la distribución de las variables de salud (general, física y mental), lo que puede sugerir una correlación. Estas se integrarán en modelos multivariantes para evaluar su peso relativo en el bienestar del paciente.
+
+**Variable Objetivo (Diabetes)**: A pesar del desbalanceo de clases, el volumen de registros en el grupo de diabéticos es estadísticamente robusto. Factor clave en el ANOVA frente al IMC y las métricas de salud, buscando identificar diferencias de medias significativas.
+
+*Información detallada de análisis de variables: [Análisis Descriptivo de Variables Categóricas](ADD_variables_cat.R)*
+
+### Variables numéricas
+
+**IMC:** El `imc_valor` presenta una tendencia central estable (media y mediana similares), pero con una curtosis muy elevada (14.0 >> 3). Esto define una distribución leptocúrtica de "colas pesadas", donde predominan los valores de obesidad. Esto confirma la división en `imc_cat`, donde se observa que más del 70% de la muestra se sitúa en rangos de Sobrepeso y Obesidad. La baja dispersión es extremadamente útil para el [ANOVA](#pruebas-de-hipótesis-anova).
+
+**Salud física y Mental:** Ambas variables tienen el MAD y mediana en 0, lo que indica que el 50% de los datos son gente sana. La asimetría positiva lo confirma, y la mayoría de datos estan centrados en la zona izquierda, 
+teniendo una distribución de cola larga / sesgada. Validando con `salud_fisica_cat` y `salud_mental_cat`, los grupos críticos son los de menor cantidad de registros (los que tienen `Problemas Crónicos`), los más útiles para el estudio estadístico de diabetes.
+
+**Edad:** La edad presenta una distribución platicúrtica, con una curva prácticamente plana / constante. Teniendo una dispersión mínima de datos. Sesgada negativamente, validado con la variable `edad_cat`; teniendo un 57.7% de la muestra entre los 50 y 70 años observada en edad_label. Extremadamente útil para regresiones por la baja dispersión y ausencia de outilers influyentes.
+
+:::{.callout-note}
+*La creación de variables categóricas derivadas de las numéricas, facilita mucho más el análisis estadístico.*
+:::
+
+*Información detallada de análisis de variables: [Análisis Descriptivo de Variables Numéricas](ADD_variables_num.R)*
+
+---
+
+---
+
+# 3. Análisis Exploratorio (AED)
+
+Se van a visualizar las conclusiones sacadas en el apartado anterior [ADD](#análisis-descriptivo-(add)). Facilitando de esta forma el análisis estadístico con gráficos univariantes y bivariantes.
+
+## Visualización de Datos
+
+### Gráficos de Barras:
+
+:::{.panel-tabset}
+## Diabetes
+```{r}
+datos %>% 
+  ggplot(aes(x = diabetes,
+             fill = diabetes,
+             color = diabetes)) +
+        scale_y_continuous(labels = scales::comma) + # Eje Y más legible
+        geom_bar(alpha = .5, show.legend = FALSE) +
+        labs(title = "Gráfico de Barras Diabetes",
+             x = "Tipos de Diabetes",
+             y = "Frecuencias de casos") +
+        theme_minimal()
+```
+## Índice de Masa Corporal (IMC)
+```{r}
+datos %>% 
+  ggplot(aes(x = imc_cat,
+             fill = imc_cat,
+             color = imc_cat)) +
+        scale_y_continuous(labels = scales::comma) + # Eje Y más legible
+        geom_bar(alpha = .5, show.legend = FALSE) +
+        labs(title = "Gráfico de Barras IMC (categorías)",
+             x = "Divisiones de IMC",
+             y = "Frecuencias de casos") +
+        theme_minimal() +
+        theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 9))
+```
+## Edades (por intervalos)
+```{r}
+datos %>% 
+  ggplot(aes(x = edad_label)) +
+  geom_bar(fill = "steelblue", alpha = 0.8) +
+  labs(title = "Distribución de la Población por Rangos de Edad",
+       x = "Intervalos de Edad",
+       y = "Frecuencia Absoluta") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+## Variables Binarias
+```{r}
+datos %>%
+  select(presion_arterial_alta, colesterol_alto, chequeo_colesterol, ataque_cerebral, 
+         ataque_cardiaco, actividad_fisica, consumo_de_fruta, consumo_de_verduras, 
+         consumo_de_alcohol_alto, seguro_medico, no_acudir_al_medico_por_coste, 
+         dificultad_caminar, fumador) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Respuesta") %>%
+  group_by(Variable, Respuesta) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Variable) %>%
+  mutate(Porcentaje = n / sum(n)) %>%
+  filter(Respuesta == "Sí") %>%
+  ggplot(aes(x = reorder(Variable, Porcentaje), y = Porcentaje, fill = Porcentaje)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1) +  
+  labs(title = "Factores de Riesgo y Hábitos",
+       subtitle = "Porcentaje de respuestas 'Sí' por variable",
+       x = NULL,
+       y = "Porcentaje de la Población") +
+  theme_minimal()
+```
+
+::: {.content-visible when-format="html"}
+:::{.column-margin}
+Apreciamos de una manera mucho más clara la distrbibución de estas variables y sus clases. Viendo la **gran cantidad de personas no diabéticas**, y la **gran cantidad de personas con sobrepeso y obesidad**. 
+:::
+:::
+
+::: {.content-visible when-format="pdf"}
+:::{.callout-note}
+Apreciamos de una manera mucho más clara la distrbibución de estas variables y sus clases. Viendo la **gran cantidad de personas no diabéticas**, y la **gran cantidad de personas con sobrepeso y obesidad**. 
+:::
+:::
+
+Se observan los **intervalos de edades**, mostrando esa distribución prácticamente constante mencionada previamente *(distribución platicúrtica)* y la concetración de datos  57.7% de la muestra entre los 50 y 70. 
+
+El último gráfico muestra las diferentes **variables binarias** con valor `Sí` de manera ordenada, resaltando los factores de riesgo y hábitos frente a nuestra variable objetivo `diabetes`, se confirma de manera más sencilla que un descarte de estas variables sería algo precipitado, ya que la distribución de sus datos pueden servir dependiendo el análisis estdadístico / inferencial a realizar.
+:::
+
+## Análisis de Correlación/Relación
+
+### Diabetes y IMC
+
+:::{.panel-tabset}
+## Distribución IMC según estado de Diabetes
+```{r}
+datos %>% 
+  ggplot(aes(x = diabetes,
+             y = imc_valor,
+             fill = diabetes)) + # 'fill' colorea el interior; 'color' colorearía solo los bordes
+        geom_boxplot(alpha = .5, show.legend = FALSE) +
+        labs(title = "Distribución IMC según estado de Diabetes",
+             x = "Diabetes",
+             y = "Índice de Masa Corporal (IMC)") +
+        theme_minimal() +
+        stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "white")
+```
+## IMC según Diabetes
+```{r}
+datos %>% 
+  ggplot(aes(x = diabetes, fill = imc_cat)) +
+  geom_bar(position = "fill", alpha = 0.8) + # probar "dodge"
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(palette = "YlOrRd") +
+  labs(
+    title = "Composición del IMC según Estado de Diabetes",
+    subtitle = "Análisis bivariante de proporciones relativas",
+    x = "Diagnóstico de Diabetes",
+    y = "Porcentaje (%)",
+    fill = "Categoría IMC"
+  ) +
+  theme_minimal()
+```
+:::
+::: {.content-visible when-format="html"}
+:::{.column-margin}
+Se observa solapamiento en el nivel de IMC según diabetes, pero con aumento: **a mayor IMC más propenso a ser diabético, mayor aumento de media**.
+:::
+:::
+
+::: {.content-visible when-format="pdf"}
+:::{.callout-note}
+Se observa solapamiento en el nivel de IMC según diabetes, pero con aumento: **a mayor IMC más propenso a ser diabético, mayor aumento de media**.
+:::
+:::
+
+## Estados Salud y Niveles Socioeconómico
+
+:::{.panel-tabset}
+## Indicadores de Salud
+```{r}
+
+datos %>%
+  # Seleccionamos las tres y las pasamos a formato largo
+  select(salud_general, salud_fisica_cat, salud_mental_cat) %>%
+  pivot_longer(everything(), names_to = "Dimension", values_to = "Nivel") %>%
+  # Graficamos
+  ggplot(aes(x = Nivel, fill = Dimension)) +
+  geom_bar(show.legend = FALSE, alpha = 0.7) +
+  facet_wrap(~Dimension, scales = "free_x") + # Cada una con su eje X
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Distribución de los Estados de Salud",
+       subtitle = "Comparativa de Salud General, Física y Mental",
+       x = "Nivel de Salud / Frecuencia de Problemas",
+       y = "Número de Registros") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+## Nivel de educación e ingresos
+```{r}
+datos %>% 
+  ggplot(aes(x = nivel_de_educacion, fill = nivel_de_ingresos)) +
+  geom_bar(position = "fill", alpha = 0.8) + # probar "dodge"
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(palette = "Greens") +
+  labs(
+    title = "Relación entre Nivel de Educación e Ingresos",
+    subtitle = "Distribución de frecuencias absolutas",
+    x = "Nivel de Estudios",
+    y = "Ingresos (en miles)",
+    fill = "Rangoo de Ingresos"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+:::
+::: {.content-visible when-format="html"}
+:::{.column-margin}
+Se confirma la **relación en los estados de Salud**: mayoría de datos en zona izquierda. 
+
+Se confirma la **relación socioeconómica**: a mayor nivel educativo, existe una mayor concentración de individuos en los rangos de ingresos superiores (más de 75k)
+:::
+:::
+
+::: {.content-visible when-format="pdf"}
+:::{.callout-note}
+Se confirma la **relación en los estados de Salud**: mayoría de datos en zona izquierda. 
+
+Se confirma la **relación socioeconómica**: a mayor nivel educativo, existe una mayor concentración de individuos en los rangos de ingresos superiores (más de 75k)
+:::
+:::
+
+## Detección de Atípicos
+
+### Variables numéricas
+
+Respecto a las variables numéricas, las únicas variables que pueden presentar outliers influyentes son: `salud_fisica` y `salud_mental`. Esto se obtiene de forma rápida calculando los estadísticos básicos y observando la **media** y **mediana** (calculada sobre otro archivo). 
+
+Por lo que únicamente se va a realizar la Regla de Tukey para detección de ouliers (Rango Intercuartilico - IQR):
+
+```{r}
+# Salud Física
+q3_fis <- quantile(datos$salud_fisica, 0.75, na.rm = TRUE)
+iqr_s_fis <- IQR(datos$salud_fisica, na.rm = TRUE)
+lim_sup_fis <- q3_fis + (1.5 * iqr_s_fis)
+
+# Salud Mental
+q3_men <- quantile(datos$salud_mental, 0.75, na.rm = TRUE)
+iqr_s_men <- IQR(datos$salud_mental, na.rm = TRUE)
+lim_sup_men <- q3_men + (1.5 * iqr_s_men)
+```
+
+Se observa que el valor del IQR es: 
+
+- `salud_fisica`:  `r iqr_s_fis` este valor nos indica el 50% de los datos central (eliminando el 25% inferior y superior). Siendo el límite superior `r lim_sup_fis`.
+
+- `salud_mental`: `r iqr_s_men` este valor nos indica que el 50% de los datos (eliminando el 25% inferior y superior) están en ese valor. Siendo el límite superior `r lim_sup_men`
+
+Estos IQR muestra que la gran mayoría de datos se situan en valores de días bajos, indicando que gran parte de los datos serían outliers. Por lo que no se pueden eliminar outliers, ya que se eliminarian gran cantidad de datos y no tendría sentido (al tener los valores entre un intervalo de días de $[0, 30]$). 
+
+**Estos datos son relevantes, por lo que no se puede eliminar ningún outlier.**
+
+### Variables categóricas
+
+Se ha realizado un análisis previo de cada variable mediante tablas de frecuencias. Las variables con **clases minoritarias** son:
+
+- `nivel_de_educacion` para el nivel `Sin Estudios` siendo un 0.1% del total de registros (174 registros). No se puede eliminar al ser un dato relevante a nivel socioeconómico 
+- `imc_cat` para los intervalos `Bajo peso (IMC < 18.5)` siendo un 1.2% del total de registros (3127 registros). No se puede eliminar tampoco, al ser una cantidad de registros minoritaría pero no anómala.
+
+**Aun así, estos datos son relevantes, por lo que no se pueden eliminar.**
+
+:::{.callout}
+**Obtener estadísticos de manera detallada:**
+
+- [Análisis Descriptivo de Variables Numéricas](ADD_variables_num.R)
+
+- [Análisis Descriptivo de Variables Categóricas](ADD_variables_cat.R)
+:::
+
+*Es normal no tener ningún outlier atípico al ser un dataset famoso.*
+
+---
+
+---
+
+# 4. Análisis Estadístico e Inferencia
+
+::: {.list-table caption="Análisis a realizar (comparativa)"}
+
+- - **Característica** 
+  
+  - ANOVA
+  
+  - Regresión
+
+- - **Variable Independiente (Factor)**
+
+  - Categórica (Niveles o Grupos)
+
+  - Numérica (Continua o Discreta)
+
+- - **Variable Dependiente (Respuesta)**
+
+  - Numérica (Continua o Discreta)
+
+  - Numérica (Continua o Discreta)
+
+- - **Objetivo Principal**
+
+  - Comparar medias entre los diferentes grupos o niveles del factor.
+
+  - Relacionar y Predecir el cambio en la respuesta ante cambios en el predictor.
+
+:::
+
+## Pruebas de Hipótesis: ANOVA
+
+### ANOVA una vía: `imc_valor ~ diabetes`
+
+Inicialmente se va a relizar ANOVA de una vía, sobre el que se va a ir añadiendo interacciones de más variables como factores para nuestra variable de respuesta. Al tener un modelo con tanto registros, el ANOVA dará resultados estadísticamente significativos inicialmente, por eso las interacciones se van a realizar de manera progresiva pero con un objetivo: **tener un valor real en la interpretación del ANOVA**. Se irán validando los supuestos en cada ANOVA realizado.
+
+- **Variable Objetivo:** `diabetes`
+
+```{r}
+datos %>% 
+  select(diabetes) %>%
+  distinct() %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Niveles de Variable Objetivo") %>% 
+  cols_label(diabetes = "Diabetes")
+```
+::: {.content-visible when-format="html"}
+:::{.column-margin}
+*Tabla con los distintos grupos de la variable.*
+:::
+:::
+
+::: {.content-visible when-format="pdf"}
+:::{.callout-note}
+*Tabla con los distintos grupos de la variable.*
+:::
+:::
+
+Esta es la variable que más sentido tiene como variable objetivo a analizar (al estar trabajando en un dataset de **diabetes**), será nuestro factor al ser una variable categórica. Con ella, se podrá ver si los distintos grupos de esta variable son iguales o no en base a nuestra variable de respuesta, obteniendo conclusiones de que puede afectar a la diabetes. **Es la variable clave de este análisis estadístico.**
+
+- **Variable Numérica:** `imc_valor`
+
+::: {.panel-tabset}
+## Intervalos de salud física
+```{r}
+datos %>% 
+  select(imc_cat) %>%
+  distinct() %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Intervalos de Distribución de IMC", 
+             subtitle = "Ayuda en Visualización e Interpretación de valores") %>% 
+  cols_label(imc_cat = "IMC por Categorías / Intervalos")
+```
+## Valores y Frecuencia de salud física
+```{r}
+datos %>% 
+  group_by(imc_valor) %>% 
+  summarise(
+    Frequency_Abs = n(),
+    .groups = "drop"
+  ) %>% 
+  gt() %>% 
+  gt_theme_guardian() %>%
+  tab_header(title = "Valores y Conteo del IMC") %>% 
+  cols_label(imc_valor = "Índice de Masa Corporal (kg/altura)",
+             Frequency_Abs = "Frecuencia Absoluta")
+```
+:::
+::: {.content-visible when-format="html"}
+:::{.column-margin}
+Tabla con los recuentos básicos de la variable `imc_valor`, para observar los valores y recuentos básicos $\text{Frecuencia Absoluta}$.
+
+Tabla con los **niveles / categorías / intervalos** de la variable `imc_cat` para **ayudar a la visualización de sus valores numéricos**; dividido en 4 categorías.
+:::
+:::
+
+::: {.content-visible when-format="html"}
+:::{.callout-note}
+Tabla con los recuentos básicos de la variable `imc_valor`, para observar los valores y recuentos básicos $\text{Frecuencia Absoluta}$.
+
+Tabla con los **niveles / categorías / intervalos** de la variable `imc_cat` para **ayudar a la visualización de sus valores numéricos**; dividido en 4 categorías.
+:::
+:::
+
+Se ha seleccionado el **índice de masa corporal (kg/altura)** que tienen las diferentes personas (registros). De forma anticipada puede ser la variable que tenga mayor relevancia sobre la diabetes, ya que el sobrepeso es un factor que influye altamente sobre la aparición de diabetes *(de tipo 2)*.
+Aún así, la **selección de variable numérica puede ser más relativa y variar**, al haber un total de $4 \text{ variables numéricas}$ que pueden tener una relevancia elevada sobre nuestra variable objetivo/factor `diabetes`. 
+
+::: {.callout}
+*Posteriormente se eligirán las otras variables numéricas, para observar los diferentes resultados entre ANOVA. Pudiendo comparar los niveles de significancia sobre el factor `diabetes`*
+:::
+
+Las variables para el análisis entonces son:
+
+  - **Variable Factor:** `diabetes`
+
+  - **Variable Respuesta:** `imc_valor`
+
+```{r}
+anova_1 <- datos %>% 
+  aov(imc_valor ~ diabetes, data = .)
+summary(anova_1)
+```
+
+Los resultados muestran un estadístico $\text{p-value} <<< 0.05$. Dado que el valor $(p-value)$ es estrictamente inferior al nivel de significancia ($\alpha = 0.05$), se rechaza de manera contundente la hipótesis nula. Esto demuestra que existen diferencias estadísticamente significativas en la media del Índice de Masa Corporal (IMC) entre los diferentes grupos de diagnóstico de diabetes. Como se anticipó en el análisis exploratorio,**el sobrepeso tiene un peso significativo en los grupos de pacientes prediabéticos y diabéticos**.
+
+Como rechazamos $H_0$, sabemos que las medias difieren, ahora se realizará:
+
+- **La Prueba Post-Hoc (Tukey HSD)**
+
+Usamos la prueba **Tukey HSD** (Diferencia Honestamente Significativa) para hacer comparaciones por pares. Con esta prueba podemos visualizar e interpretar cuales son las medias que difieren entre sí.
+
+```{r}
+TukeyHSD(anova_1)
+```
+
+:::{.panel-tabset}
+## BoxPlot
+```{r}
+datos %>% 
+  boxplot(imc_valor ~ diabetes, col = c("yellow", "green", "red"), ylab = "Valor de IMC", data = .)
+```
+## Plot Test Tukey
+```{r}
+plot(TukeyHSD(anova_1))
+```
+:::
+
+Se visualiza que los resultados `lwr` y `upr` de todas las comparaciones por pares están muy alejados del valor cero. También, los valores p ajustados (`p adj`) son inferiores a 0.0001. Esto nos indica que las diferencias de IMC son estadísticamente significativas entre los tres niveles del factor.
+
+El boxplot nos muestra que existe un gradiente positivo claro. Con el plot de Tukey y los valores `diff` observamos que las medias que más difieren en los grupos son: `Diabetes-No diabético`, es lo más lógico en el análisis.
+
+Podemos decir que: el IMC medio aumenta de forma progresiva desde el grupo de pacientes no diabéticos, pasando por los prediabéticos, hasta alcanzar su valor máximo en el grupo con diagnóstico de diabetes.
+
+#### Evaluación de Supuestos: ANOVA `imc_valor ~ diabetes`
+
+Para que los resultados del ANVOA sean fiables, se deben de cumplir estas tres asunciones principales:
+
+:::{.callout-note}
+*Se puede añadir como complemento el supuesto de **Ausencia de outliers**, se ha omitido en esta sección, ya que fue evaluado y justificado previamente en el Análisis Exploratorio (AED).*
+:::
+
+1. **Independencia:** Las observaciones son independientes unas de otras.
+
+  - Inicialmente en la descripción del diseño muestral del dataset *(BRFSS)* se especifíca que las **observaciones son independientes**. Es decir: la muestra fue elegida de forma aleatoria y los individuos no está en dos grupos distintos (no registros dependientes).
+    
+2. **Normalidad de los Residuos:** Los errores/residuos del modelo deben distribuirse normalmente.
+
+  - Para este supuesto se va a utilizar el **QQ-Plot**. No podemos utilizar: **Test de Shapiro-Wilk**, ya que tenemos más de $5000 \text{datos}$
+  - También se va a utilizar la alternativa para muestras grandes (sin restricciones de $5000 \text{datos}$) **Test Anderson-Darling**, que se interpreta igual que el Shapiro: **$H_0$:** Los datos siguen una distribución normal.
+
+```{r}
+library(nortest)
+qqnorm(residuals(anova_1))
+qqline(residuals(anova_1), col = "red")
+ad.test(residuals(anova_1))
+```
+
+Los residuos claramente no siguen una distribución normal, se visualiza en la cola superior del qq-plot una fuerete desviación (asimetría positiva en el IMC: valores altos de obesidad). Se confirma numéricamente con el `p-value <<< 0.05` del Test de Anderson-Darling. 
+
+3. **Homocedasticidad:** Las varianzas de los diferentes grupos deben ser iguales (homogéneas).
+
+- Para este supuesto se va a utilizar el **Test de Levene** donde: **$H_0$:** Las varianzas son iguales.
+
+``` {r}
+library(car)
+leveneTest(anova_1)
+```
+
+La varianza de $Y$ (la dispersión de los datos) no es la misma para todos los grupos comparados `p-value <<< 0.05`. **Este es el supuesto más crítico para el ANOVA y no se cumple al igual que el anterior.**
+
+Al no cumplirse varios supuestos, se pueden realizar varias opciones como solución a este ANOVA: 
+
+- Para la **Heterocedasticidad** usar el **Test F de Welch**. El test de Welch ajusta matemáticamente los grados de libertad para compensar la diferencia de varianzas.
+
+- Para la **No Normalidad de Residuos (sesgo positivo en los datos)**:
+  - **Asimetría positiva moderada:** usando de la raíz cuadrada ($\sqrt{x}$) para comprimir la cola derecha de la distribución.
+  - **Asimetría positiva sustantiva (muy severa):** usando del logaritmo en base 10 ($\log_{10}(x)$), el cual ejerce un efecto de compresión mayor sobre los valores extremos.
+
+Como ambas asunciones no se cumplen, se deberían realiar varios cambios creando nuevas variables y realizando diferentes test, no creemos que sea lo conveniente (al tener un dataset con tantas observaciones, una transformación logarítmica puede cambiar un poco esa heterocedasticidad, pero no para cumplir el supuesto).
+
+- La idea idónea es el **Test de Kruskal-Wallis**. Este test no paramétrico que asume no normalidad en los datos. Es el etándar cuando hay fallos en normalidad y homocedasticidad.
+
+``` {r}
+kruskal_1 <- datos %>% 
+  kruskal.test(imc_valor ~ diabetes, data = .)
+kruskal_1
+```
+
+Los resultados muestran un estadístico $\text{p-value} <<< 0.05$. Dado que el valor $(p-value)$ es estrictamente inferior al nivel de significancia ($\alpha = 0.05$), se rechaza para este test nuevo test la hipótesis nula.
+
+Al haber realizado un Test de Kruskal-Wallis debemos de utilizar unas pruebas Post-Hoc correspondientes al Test, en este caso: **Dunn's Test** una prueba no paramétrica que nos indicará los pares de grupos que difieren entre sí.
+
+``` {r}
+library(dunn.test)
+dunn.test(datos$imc_valor, datos$diabetes, method = "bonferroni")
+```
+
+Observamos que al igual que con el Test de Tukey, esta prueba nos muestra que los 3 grupos difieren entre sí. Esto nos indica que las diferencias de IMC son estadísticamente significativas entre los tres niveles del factor. 
+
+De nuevo observamos que las medias que más difieren en los grupos son: `Diabetes-No diabético` (estadístico de prueba $Z = -115.66$) de manera considerable a las otras comparaciones por pares.
+
+Con este primer test realizado se concluye que hay diferencia en el nivel de IMC en base a los grupos de diabéticos. Podemos revalidar mediante métodos robustos que: el IMC medio aumenta de forma progresiva desde el grupo de pacientes no diabéticos, pasando por los prediabéticos, hasta alcanzar su valor máximo en el grupo con diagnóstico de diabetes.
+
+### ANOVA dos vía: `imc_valor ~ diabetes * actividad_fisica`
+
+Tal como se ha comentado antes, se va a añadir la interacción de otra variable al ANVOA previo en este caso: `actividad_fisica` (variable cualitativa `Sí`/`No`). El objetivo de este ANOVA de dos vías es evaluar no solo los efectos principales de cada variable por separado, sino también el efecto de interacción conjunto entre ambas. Es decir, buscamos determinar si el impacto de la diabetes sobre el Índice de Masa Corporal varía dependiendo de si el paciente mantiene un estilo de vida activo o sedentario.
+
+```{r}
+datos %>% 
+  select(actividad_fisica) %>%
+  distinct() %>% 
+  gt() %>% 
+  gt_theme_guardian() %>% 
+  tab_header(title = "Niveles de Variable Objetivo") %>% 
+  cols_label(actividad_fisica = "Actividad Física")
+```
+::: {.content-visible when-format="html"}
+:::{.column-margin}
+*Tabla con los distintos grupos de la variable.*
+:::
+:::
+
+::: {.content-visible when-format="html"}
+:::{.callout-note}
+*Tabla con los distintos grupos de la variable.*
+:::
+:::
+
+Las variables para el análisis entonces son:
+
+  - **Variable Factor 1:** `diabetes`
+  
+  - **Variable Factor 2:** `actividad_fisica`
+
+  - **Variable Respuesta:** `imc_valor`
+
+```{r}
+anova_2 <- datos %>% 
+  aov(imc_valor ~ diabetes * actividad_fisica, data = .)
+summary(anova_2)
+```
+
+El resultado es el esperado. Ambas variables presentan estadísticos con $\text{p-value's} <<< 0.05$. La interacción de `diabetes:actividad_fisica` también muestra un estadístico $\text{p-value} << 0.05$. Esto nos indica el efecto que tiene la diabetes sobre el aumento del IMC no es exactamente el mismo en las personas activas que en las sedentarias. Se vuelve a confirmar la relación entre **sobrepeso y grupos de pacientes diabéticos y prediabéticos**.
+
+Como rechazamos $H_0$ en todos los niveles, sabemos que las medias difieren, ahora se realizará:
+
+- **La Prueba Post-Hoc (Tukey HSD)**
+
+```{r}
+TukeyHSD(anova_2)
+```
+
+:::{.panel-tabset}
+## BoxPlot
+```{r}
+datos %>% 
+  boxplot(imc_valor ~ diabetes * actividad_fisica, col = c("yellow", "green", "red", "steelblue", "pink", "orange"), ylab = "Valor de IMC", data = .)
+```
+## Plot Test Tukey
+```{r}
+plot(TukeyHSD(anova_2))
+```
+:::
+
+Se visualiza que los resultados `lwr` y `upr` de todas las comparaciones por pares están muy alejados del valor cero (tanto por zonas negativas como positivas). También, los valores p ajustados (`p adj`) son inferiores a 0.0001. Esto nos indica que las diferencias de IMC son estadísticamente significativas entre los tres niveles del factor.
+
+El boxplot no nos consigue discernir de manera clara entre los distintos grupos y las interacciones (solapamiento visual por tantas observaciones). Con los valores `diff` observamos que las medias que más difieren en los grupos son: 
+
+1. `No diabético:Sí-Diabetes:No` con un `diff = -5.917`, es la clara conclusión que el perfil poblacional con menor Índice de Masa Corporal es el de individuos sanos y activos, frente al perfil de mayor riesgo (diabéticos sedentarios).
+
+2. `Diabetes:No-No diabético:No` con un `diff = 4.095` indicando que, incluso entre la población que no realiza deporte, el diagnóstico de diabetes está asociado a un IMC significativamente mayor que en los no diabéticos.
+
+Podemos decir que: las personas con **mayor IMC son aquellas que no realizan deporte, emperoando** esta situación **si padecen diabetes**. Por el contrario, la actividad física actúa como un factor diferencial asociado a un menor IMC en todos los niveles de diagnóstico.
+
+#### Evaluación de Supuestos: ANOVA `imc_valor ~ diabetes * actividad_fisica`
+
+1. **Independencia:**
+
+- Se cumple.
+
+2. **Normalidad de los Residuos:** 
+
+```{r}
+library(nortest)
+qqnorm(residuals(anova_2))
+qqline(residuals(anova_2), col = "red")
+ad.test(residuals(anova_2))
+```
+
+Los residuos no siguen una distribución normal. Resultados son idénticos a los anteriores, tanto con estadísticos numéricos como de forma visual. Era fácil de intuir este resultado con la cantidad de observaciones que hay en el dataset. Una única interacción en un ANOVA no puede cambiar un supuesto de normalidad de manera tan sencilla.
+
+3. **Homocedasticidad:**
+
+``` {r}
+library(car)
+leveneTest(anova_2)
+```
+
+La varianza de $Y$ (la dispersión de los datos) no es la misma para todos los grupos comparados `p-value <<< 0.05`.
+
+Como ambas asunciones no se cumplen se vuelve a realizar el **Test ART (Aligned Rank Transform)**. Es la solución estándar a un Kruskal con interacciones (método robusto no paramétrico para realizar ANOVA con interacciones mediante rangos).
+
+``` {r}
+library(ARTool)
+m_art <- art(imc_valor ~ diabetes * actividad_fisica, data = datos)
+anova(m_art)
+```
+
+Los resultados muestran un estadístico $\text{p-value} <<< 0.05$ para las 2 variables y la interacción. Dado que el valor $(p-value)$ es estrictamente inferior al nivel de significancia ($\alpha = 0.05$), se rechaza para este test nuevo test la hipótesis nula.
+
+Al haber realizado un Test ART debemos de utilizar unas pruebas Post-Hoc correspondientes al Test (se va a usar la función `art.con`: herramienta estándar para comparaciones post-hoc de modelos ART).
+``` {r}
+posthoc_art <- art.con(m_art, "diabetes:actividad_fisica", adjust = "none")
+summary(posthoc_art)
+```
+
+Al tener tantos grados de libertad ($253.674$) el test será **extremadamente sensible**. Vemos que todas las interacciones son significativas (para todos los pares).
+
+Mayor Contraste: La comparación `Diabetes,No - No diabético,Sí` presenta el estimador más alto (`estimate = 63083`), confirmando que la combinación de diabetes y sedentarismo produce la mayor desviación en los rangos de IMC.
+
+En todas las comparaciones donde un grupo sedentario (`No`) se compara con su par activo (`Sí`), el estimador es positivo, esto nos indica que a menor actividad física mayor rango de IMC (independientemente de ser diabético ó no).
+
+En conclusión, el modelo ART refuerza la evidencia observada en los análisis exploratorios: la **combinación de diabetes y sedentarismo** es el factor determinante para situar a los individuos en los **rangos superiores de IMC** de la muestra."
+
+## Modelado Predictivo: Regresión Logística
+
+Al tener un dataset enfocado en la diabetes, nuestro enfoque de modelo es claro: **GLM - Regresión Logística**. La elección de esta técnica de inferencia estadística y aprendizaje automático es clara: predecir variables categóricas *(dicotómicas)* a partir de un conjunto de variables independientes. 
+
+En nuestro caso nuestra variable dependiente sería
+
+- `diabetes`:
+
+  - $0 = \text{No diabético}$
+  - $1 = \text{Sí Diabético}$
+
+Donde combinaremos los niveles 1 (prediabético) y 2 (diabético) de la variable diabetes en el valor $1$ para tener una variable dicotómica con valores entre 0 y 1.
+
+``` {r}
+datos_glm_logistic <- datos %>%
+  mutate(
+    diabetes_binaria = fct_collapse(diabetes,
+      "Diabético" = c("Pre-diabetes", "Diabetes"),
+      "No diabético" = "No diabético"
+    )
+  ) %>% 
+  select(
+    diabetes_binaria,
+    presion_arterial_alta, 
+    colesterol_alto, 
+    chequeo_colesterol, 
+    imc_valor, 
+    ataque_cerebral, 
+    ataque_cardiaco, 
+    actividad_fisica, 
+    salud_fisica, 
+    salud_general, 
+    salud_mental,
+    seguro_medico, 
+    no_acudir_al_medico_por_coste, 
+    dificultad_caminar,
+    fumador, 
+    consumo_de_alcohol_alto, 
+    consumo_de_fruta, 
+    consumo_de_verduras,
+    sexo, 
+    edad_int, 
+    nivel_de_educacion, 
+    nivel_de_ingresos
+  )
+dim(datos_glm_logistic) # 253680     22 -> se han elegido únicamente las variables int (no las cat) y diabetes_binaria
+
+```
+
+Con esta refactorización de variable, la idea es realizar varios modelos. Partiendo de un modelo nulo hasta uno completo aplicando penalización Lasso/ElasticNet a este modelo para reducir variables y seleccionar las adecuadas, consiguiendo un modelo más simple/parsimonioso que mantenga el mismo poder predictivo que el completo. No sería correcto realizar un Ridge ya que tenemos $250000$ registros por lo que el riesgo de overfitting es mínimo.
+
+Se van a dividir los datos en Test ($20\text{\%}$) y Training ($80\text{\%}$) primero que todo.
+
+```{r}
+library(caret)
+
+set.seed(150) # semilla para repetir los resultados
+indice = createDataPartition(datos_glm_logistic$diabetes_binaria, p=0.80, list=FALSE)
+entrenamiento <- datos_glm_logistic[indice,]
+prueba <- datos_glm_logistic[-indice,]
+dim(entrenamiento)
+dim(prueba)
+```
+
+Para evitar la fuga de datos y garantizar una evaluación rigurosa, todos los modelos a continuación se ajustarán exclusivamente utilizando el conjunto de entrenamiento ($80\text{\%}$ de los datos).
+
+### Modelo Nulo 
+Se realiza un primer modelo sin variables explicativas/predictoras, únicamente con el intercepto.
+
+``` {r}
+library(broom)
+
+modelo_nulo <- glm(diabetes_binaria ~ 1, data = entrenamiento, family = binomial)
+summary(modelo_nulo)
+
+# 1. Obtener estimadores originales (Log-Odds)
+log_odds <- tidy(modelo_nulo, exponentiate = FALSE) %>%
+  select(term, estimate) %>%
+  rename(Log_Odds = estimate)
+
+# 2. Obtener Odds Ratios (exponenciados)
+odds_ratios <- tidy(modelo_nulo, exponentiate = TRUE, conf.int = FALSE) %>%
+  select(term, estimate, std.error, p.value) %>%
+  rename(Odds_Ratio = estimate)
+
+# 3. Combinar todo
+tabla_m_nulo <- left_join(log_odds, odds_ratios, by = "term")
+
+# 4. Presentar la tabla
+tabla_m_nulo %>%
+  gt() %>%
+  tab_header(title = "Estimadores del Modelo Logístico Nulo") %>%
+  cols_label(
+    term = "Variable",
+    Log_Odds = "Log-Odds (B)",
+    Odds_Ratio = "Odds Ratio (exp(B))",
+    std.error = "Error Est.",
+    p.value = "P-valor"
+  ) %>%
+  fmt_number(columns = c(Log_Odds, Odds_Ratio, std.error), decimals = 3) %>%
+  fmt_scientific(columns = p.value, decimals = 2) %>% 
+  gt_theme_guardian() %>% 
+  tab_style(
+    style = cell_text(color = "steelblue", weight = "bold"),
+    locations = cells_body(columns = p.value)
+  )
+```
+
+La idea de este modelo inicial es comparar la Devianza Residual con los siguientes modelos en base a las variables que se añadan.
+
+### Modelo Básico: 
+Se va a realizar un segundo modelo, este añadiendo la variable que se considera más significativa a priori.
+
+``` {r}
+modelo_1var <- glm(diabetes_binaria ~ imc_valor, data = entrenamiento, family = binomial)
+summary(modelo_1var)
+# 1. Obtener estimadores originales (Log-Odds)
+log_odds <- tidy(modelo_1var, exponentiate = FALSE) %>%
+  select(term, estimate) %>%
+  rename(Log_Odds = estimate)
+
+# 2. Obtener Odds Ratios (exponenciados)
+odds_ratios <- tidy(modelo_1var, exponentiate = TRUE, conf.int = FALSE) %>%
+  select(term, estimate, std.error, p.value) %>%
+  rename(Odds_Ratio = estimate)
+
+# 3. Combinar todo
+tabla_m_1var <- left_join(log_odds, odds_ratios, by = "term")
+
+# 4. Presentar la tabla
+tabla_m_1var %>%
+  gt() %>%
+  tab_header(title = "Estimadores del Modelo Logístico Básico") %>%
+  cols_label(
+    term = "Variable",
+    Log_Odds = "Log-Odds (B)",
+    Odds_Ratio = "Odds Ratio (exp(B))",
+    std.error = "Error Est.",
+    p.value = "P-valor"
+  ) %>%
+  fmt_number(columns = c(Log_Odds, Odds_Ratio, std.error), decimals = 3) %>%
+  fmt_scientific(columns = p.value, decimals = 2) %>% 
+  gt_theme_guardian() %>% 
+  tab_style(
+    style = cell_text(color = "steelblue", weight = "bold"),
+    locations = cells_body(columns = p.value)
+  )
+```
+
+Automáticamente vemos como la Devianza Residual junto el AIC disminuyen de manera considerable con la adición de una única variable. Podemos indicar que por cada unidad aumentada en IMC, el Odds Ratio para la diabetes aumenta en  $1.08 \approx 8\text{\%}$
+
+### Modelo Completo
+
+Se va a realizar un tercer modelo, en este se va a añadir todas las variables.
+
+``` {r}
+modelo_completo <- glm(diabetes_binaria ~ presion_arterial_alta + colesterol_alto + 
+                       chequeo_colesterol + imc_valor + ataque_cerebral + ataque_cardiaco + 
+                       actividad_fisica + salud_fisica + salud_general + salud_mental +
+                       seguro_medico + no_acudir_al_medico_por_coste + dificultad_caminar +
+                       fumador + consumo_de_alcohol_alto + consumo_de_fruta + consumo_de_verduras +
+                       sexo + edad_int + nivel_de_educacion + nivel_de_ingresos, 
+                       data = entrenamiento, family = binomial)
+summary(modelo_completo)
+```
+
+```{r}
+# 1. Obtener estimadores originales (Log-Odds)
+log_odds <- tidy(modelo_completo, exponentiate = FALSE) %>%
+  select(term, estimate) %>%
+  rename(Log_Odds = estimate)
+
+# 2. Obtener Odds Ratios (exponenciados)
+odds_ratios <- tidy(modelo_completo, exponentiate = TRUE, conf.int = FALSE) %>%
+  select(term, estimate, std.error, p.value) %>%
+  rename(Odds_Ratio = estimate)
+
+# 3. Combinar todo
+tabla_final <- left_join(log_odds, odds_ratios, by = "term")
+
+# 4. Presentar la tabla
+tabla_final %>%
+  gt() %>%
+  tab_header(title = "Estimadores del Modelo Logístico Completo") %>%
+  cols_label(
+    term = "Variable",
+    Log_Odds = "Log-Odds (B)",
+    Odds_Ratio = "Odds Ratio (exp(B))",
+    std.error = "Error Est.",
+    p.value = "P-valor"
+  ) %>%
+  fmt_number(columns = c(Log_Odds, Odds_Ratio, std.error), decimals = 3) %>%
+  fmt_scientific(columns = p.value, decimals = 2) %>% 
+  gt_theme_guardian() %>% 
+  tab_style(
+    style = cell_text(color = "steelblue", weight = "bold"),
+    locations = cells_body(columns = p.value)
+  )
+```
+
+El análisis de la devianza residual (139962 frente a 176826 del modelo nulo) y AIC (140032 frente a 176828 del modelo nulo) confirma una mejora sustancial en la bondad de ajuste al incluir el set completo de variables. Los estimadores transformados a Odds Ratios revelan los principales factores de riesgo metabólico ajustados por el resto de las variables:
+
+- Factores agravantes: El estado de salud_general domina el modelo; percibir la salud como 'Mala' (`salud_generalMala	`) multiplica por 6.54 las odds de ser diabético frente a tener 'Excelente' salud. Patologías previas como `chequeo_colesterolSí` ($OR = 3.52$) y la edad (`edad_int`, $OR = 1.13$ por nivel) son fuertemente predictivas.
+
+- Factores protectores: Un nivel de ingresos superior a 75k (`nivel_de_ingresos> 75k`, $OR = 0.66$) y el consumo elevado de alcohol (`consumo_de_alcohol_altoSí`, $OR = 0.51$, un resultado "raro" en el consumo moderado/alto frente a la incidencia de diabetes tipo 2) actúan reduciendo el riesgo relativo.
+
+- Irrelevancia estadística: Tras ajustar por el perfil socioeconómico y de salud general, variables como el historial de tabaquismo (`fumadorSí`, $p=0.47$) o el nivel de educación resultan estadísticamente no significativas.
+
+#### Métricas Evaluación: Modelo Logístico Completo
+
+```{r}
+library(caret)
+library(gt)
+
+y_pred <- predict(object = modelo_completo, newdata = prueba, type = "response")
+y_pred <- ifelse(y_pred > 0.5, yes = "Diabético", no = "No diabético")
+
+y_pred_factor <- factor(y_pred, levels = c("No diabético", "Diabético"))
+y_real_factor <- factor(prueba$diabetes_binaria, levels = c("No diabético", "Diabético"))
+
+cm <- confusionMatrix(y_pred_factor, y_real_factor)
+
+cm_df <- as.data.frame.matrix(cm$table)
+
+cm_df %>%
+  tibble::rownames_to_column("Predicción") %>%
+  gt() %>%
+  tab_header(
+    title = "Matriz de Confusión",
+    subtitle = "Predicción vs Realidad"
+  ) %>%
+  tab_spanner(label = "Realidad", columns = everything()) %>%
+  cols_label(Predicción = "Predicción") %>%
+  tab_style(
+    style = cell_fill(color = "#e1f5fe"),
+    locations = cells_body(columns = everything())
+  ) %>% 
+  gt_theme_guardian()
+
+
+matriz_cm <- cm$table
+
+TN <- matriz_cm[1,1]
+FP <- matriz_cm[1,2]
+FN <- matriz_cm[2,1]
+TP <- matriz_cm[2,2]
+
+accuracy <- (TP + TN) / sum(matriz_cm)
+sensibilidad <- TP / (TP + FN)
+especificidad <- TN / (TN + FP)
+precision <- TP / (TP + FP)
+f1_score <- 2 * (precision * sensibilidad) / (precision + sensibilidad) # al tener clases desbalanceadas muy util
+fpr <- FP / (FP + TN)
+npv <- TN / (TN + FN)
+
+
+metricas_primer_modelo_logistico_completo <- data.frame(
+  Metrica = c("Exactitud (Accuracy)", "Sensibilidad (Recall)", "Especificidad", 
+              "Precisión", "F1-Score", "Tasa de Falsos Positivos (FPR)", 
+              "Valor Predictivo Negativo (NPV)"),
+  Valor = c(accuracy, sensibilidad, especificidad, precision, 
+            f1_score, fpr, npv)
+)
+
+metricas_primer_modelo_logistico_completo %>%
+  gt() %>%
+  tab_header(
+    title = "Métricas de Rendimiento del Modelo",
+    subtitle = "Evaluación de clasificación binaria"
+  ) %>%
+  cols_label(
+    Metrica = "Métrica",
+    Valor = "Resultado"
+  ) %>%
+  fmt_number(
+    columns = Valor,
+    decimals = 4
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_options(
+    table.width = pct(80),
+    heading.align = "center"
+  ) %>% 
+  gt_theme_guardian() %>% 
+    tab_style(
+    style = cell_text(color = "steelblue", weight = "bold"),
+    locations = cells_body(columns = Valor)
+  )
+```
+
+Al evaluar el modelo frente al conjunto de prueba utilizando un umbral de decisión estándar ($0.5$), se evidencia el impacto del severo desbalance de clases de la muestra original.
+
+- El modelo presenta un Accuracy elevado (0.848) y un excelente Valor Predictivo Negativo (0.973). Es altamente eficaz reconociendo a los individuos sanos.
+
+- Sin embargo, fracasa en su capacidad predictiva positiva. Su Precisión es alarmantemente baja (17.8%), lo que significa que de cada 100 personas que el modelo clasifica como diabéticas, solo 18 realmente lo son. Asimismo, la Sensibilidad (55.3%) indica que el modelo no logra identificar a casi la mitad de los pacientes que realmente padecen la enfermedad (6570 falsos negativos).
+
+- El F1-Score (0.270) refleja de manera fiel la incapacidad del umbral estático de 0.5 para manejar este desbalance.
+
+Estos resultados confirman que evaluar la calidad de un modelo probabilístico médico mediante un corte discreto al 50% es inadecuado. Para comprender la verdadera capacidad de discriminación del modelo, es **imprescindible analizar el área bajo la curva ROC (AUC)**.
+
+```{r}
+library(pROC)
+
+probs <- predict(modelo_completo, newdata = prueba, type = "response")
+
+roc_obj <- roc(prueba$diabetes_binaria, probs)
+
+auc_info <- ci.auc(roc_obj)
+print(auc_info)
+
+plot(roc_obj, main = paste("Curva ROC - AUC:", round(auc(roc_obj), 3)),
+     col = "steelblue", lwd = 3, print.auc = TRUE)
+```
+
+```{r}
+# Probabilidades predichas de tu modelo
+pred_probs <- predict(modelo_completo, newdata = prueba, type = "response")
+
+# Realidad en formato numérico (1 = Diabético, 0 = No diabético)
+realidad_num <- ifelse(prueba$diabetes_binaria == "Diabético", 1, 0)
+
+# Calcular el Brier Score (Error cuadrático medio de las probabilidades)
+brier_score <- mean((pred_probs - realidad_num)^2)
+cat("El Brier Score es:", round(brier_score, 4), "\n")
+
+# Prevalencia (la media de los casos positivos en entrenamiento)
+prevalencia <- mean(ifelse(entrenamiento$diabetes_binaria == "Diabético", 1, 0))
+
+# Brier Score del modelo de referencia (predice siempre la media)
+bs_ref <- mean((prevalencia - realidad_num)^2)
+
+# Brier Skill Score
+bss <- 1 - (brier_score / bs_ref)
+cat("El Brier Skill Score es:", round(bss, 4), "\n")
+```
+
+El Área Bajo la Curva (AUC) de 0.817 indica un modelo con una muy buena capacidad de discriminación para el contexto médico en el que estamos. En términos prácticos, significa que si seleccionamos aleatoriamente a un paciente diagnosticado con diabetes y a un individuo sano, existe un 81.7% de probabilidad de que el modelo le asigne un nivel de riesgo (probabilidad) más alto al paciente efectivamente diabético (la regresión logística sí ha capturado patrones predictivos robustos).
+
+Además de esta excelente discriminación, la evaluación de la calibración probabilística del modelo mediante el Brier Score arroja un valor de 0.108. Esta métrica evalúa el error cuadrático medio entre la probabilidad de riesgo predicha y la realidad clínica del paciente (donde 0 representa una predicción perfectao). Un valor tan cercano a cero confirma que el modelo no solo logra ordenar correctamente a los pacientes de mayor a menor riesgo, sino que el porcentaje exacto de probabilidad que les asigna es altamente preciso y realista.
+
+Por último, se ha calculado el BSS
+
+Esto demuestra que la regresión logística sí ha capturado patrones predictivos robustos. Los malos resultados observados previamente en la Matriz de Confusión (baja precisión y sensibilidad) no se deben a una falta de capacidad del modelo, sino a la inadecuación de usar un umbral de corte estático de 0.5 en un dataset con clases desbalanceadas.
+
+Lo ideal ahora es corregír estas métricas mediante el **Índice de Youden:**
+
+```{r}
+library(pROC)
+library(caret)
+library(gt)
+library(dplyr)
+
+# 1. Obtener probabilidades (ajusta el modelo y set de prueba a tus nombres reales)
+probs <- predict(modelo_completo, newdata = prueba, type = "response")
+
+# 2. Calcular umbral óptimo (Youden)
+roc_obj <- roc(prueba$diabetes_binaria, probs)
+umbral_optimo <- coords(roc_obj, "best", ret = "threshold", best.method = "youden")
+cat("El umbral óptimo calculado es:", round(umbral_optimo$threshold, 3), "\n")
+
+# 3. Aplicar umbral y crear factores para la matriz
+y_pred_youden <- ifelse(probs > umbral_optimo$threshold, "Diabético", "No diabético")
+y_pred_youden_factor <- factor(y_pred_youden, levels = c("No diabético", "Diabético"))
+y_real_factor <- factor(prueba$diabetes_binaria, levels = c("No diabético", "Diabético"))
+
+# 4. Matriz de Confusión
+cm_objeto <- confusionMatrix(y_pred_youden_factor, y_real_factor, positive = "Diabético")
+
+# Visualización de la Matriz
+cm_df <- as.data.frame.matrix(cm_objeto$table)
+cm_df %>%
+  tibble::rownames_to_column("Predicción") %>%
+  gt() %>%
+  tab_header(title = "Matriz de Confusión (Umbral Youden)") %>%
+  tab_style(style = cell_fill(color = "#e1f5fe"), locations = cells_body()) %>%
+  gt_theme_guardian()
+
+# 5. Extraer valores de la matriz para cálculos
+matriz_cm <- cm_objeto$table 
+TN <- as.numeric(matriz_cm[1,1])
+FN <- as.numeric(matriz_cm[1,2])
+FP <- as.numeric(matriz_cm[2,1])
+TP <- as.numeric(matriz_cm[2,2])
+
+# 6. Calcular métricas manuales de forma robusta
+accuracy <- (TP + TN) / sum(matriz_cm)
+sensibilidad <- TP / (TP + FN)
+especificidad <- TN / (TN + FP)
+precision <- TP / (TP + FP)
+f1_score <- 2 * (precision * sensibilidad) / (precision + sensibilidad)
+fpr <- FP / (FP + TN)
+npv <- TN / (TN + FN)
+
+# 7. Crear tabla de métricas
+metricas_df <- data.frame(
+  Metrica = c("Exactitud (Accuracy)", "Sensibilidad (Recall)", "Especificidad", 
+              "Precisión", "F1-Score", "Tasa de Falsos Positivos (FPR)", 
+              "Valor Predictivo Negativo (NPV)"),
+  Valor = c(accuracy, sensibilidad, especificidad, precision, 
+            f1_score, fpr, npv)
+)
+
+# 8. Presentación final
+metricas_df %>%
+  gt() %>%
+  tab_header(
+    title = "Métricas de Rendimiento (Umbral Óptimo)",
+    subtitle = paste("Umbral aplicado:", round(umbral_optimo$threshold, 4))
+  ) %>%
+  cols_label(Metrica = "Métrica", Valor = "Resultado") %>%
+  fmt_number(columns = Valor, decimals = 4) %>%
+  tab_style(
+    style = cell_text(color = "steelblue", weight = "bold"),
+    locations = cells_body(columns = Valor)
+  ) %>%
+  gt_theme_guardian()
+```
+
+Ajustar el umbral de decisión nos ha permitido corregir los problemas que teníamos con el corte tradicional de $0.5$. Al hacer este cambio, el modelo deja de estar influenciado por la enorme cantidad de personas sanas en el dataset y se convierte en una herramienta médica mucho más útil en la práctica.
+
+Analizando los resultados obtenidos, destacan los siguientes puntos:
+
+- **Aumento clave de la Sensibilidad (0.795):** Este es el gran éxito del reajuste. El modelo ahora es capaz de detectar a casi el 80% de los pacientes que realmente tienen diabetes (6358 verdaderos positivos). Hemos reducido de forma drástica los falsos negativos (pasando de 6570 a solo 1637). En medicina, esto es vital: evitamos mandar a casa a personas enfermas diciéndoles que están sanas.
+
+- **Alta fiabilidad para en descartes (NPV = 0.948):** El Valor Predictivo Negativo roza el 95%. Esto significa que, si el modelo indica que alguien no es diabético, podemos estar casi seguros de que esa persona realmente está sana. Es una herramienta excelente para descartar la enfermedad de forma rápida.
+
+- **Más Falsos Positivos:** Al forzar al modelo a detectar más diabéticos, es lógico matemáticamente que se equivoque más con las personas sanas. Por eso, la Especificidad (0.692) y la Precisión (0.325) han bajado.
+
+En el mundo real, este intercambio merece la pena. Un "falso positivo" (predecir diabetes en alguien sano) solo significa hacerle un análisis de sangre extra por precaución. Por el contrario, **un "falso negativo" significa dejar a un paciente diabético sin el tratamiento que necesita**.
+
+#### Supuestos: Modelo Logístico Completo
+
+Los supuestos a evaluar en la regresión logística van a ser:
+
+1. **Variable Dependiente Binaria:** La variable de respuesta debe ser estrictamente dicotómica (0 y 1).
+
+- Verificado previamente (refactorización hecha).
+
+2. **Independencia de las Observaciones:** Las observaciones no deben estar relacionadas entre sí. No se pueden usar datos de medidas repetidas (el mismo paciente medido varias veces) ni series temporales clásicas.
+
+- Verificado previamente (en la descripción del diseño muestral del dataset *(BRFSS)* se especifíca que las **observaciones son independientes**).
+
+3. **Tamaño de Muestra Adecuado:** A diferencia de la regresión lineal, la logística requiere muestras grandes. La "Regla de Oro" sugiere al menos **10 a 15 eventos (casos positivos)** por cada variable independiente incluida en el modelo.
+
+- Verificada. Dataset grande y con más de 10/15 casos positivos por variable.
+
+4. **Linealidad en el Logit (Log-Odds):** Relación lineal entre las $X$ continuas y el Logaritmo de Odds (Logit)
+
+```{r}
+
+# 1. Extraemos los residuos de devianza del modelo
+entrenamiento_con_res <- entrenamiento 
+entrenamiento_con_res$residuos_dev <- residuals(modelo_completo, type = "deviance")
+
+# 2. Tomamos una muestra aleatoria para no colapsar el motor gráfico
+set.seed(123)
+muestra_plot <- entrenamiento_con_res %>% sample_n(10000)
+
+# 3. Pivotar los datos a formato largo
+long_dataset <- muestra_plot %>%
+  select(residuos_dev, imc_valor, salud_fisica, salud_mental, edad_int) %>%
+  pivot_longer(cols = -residuos_dev, names_to = "predictor", values_to = "value")
+
+# 4. Graficar
+ggplot(long_dataset, aes(x = value, y = residuos_dev)) +
+  geom_point(alpha = 0.1, color = "steelblue") +
+  geom_smooth(method = "loess", color = "coral", se = FALSE, size = 1.2) +
+  facet_wrap(~ predictor, scales = "free_x") +
+  theme_bw() +
+  labs(title = "Validación de Linealidad", 
+       subtitle = "Residuos de Devianza vs Variables Continuas",
+       y = "Residuos de Devianza (Deviance Residuals)",
+       x = "Valor del Predictor")
+```
+
+5. **Ausencia de Multicolinealidad:** Las variables independientes no deben estar altamente correlacionadas entre sí.
+
+```{r}
+library(car)
+vif_valores <- vif(modelo_completo)
+print(vif_valores)
+```
+
+6. **Ausencia de Valores Atípicos Altamente Influyentes:** La regresión logística es muy sensible a _outliers_ extremos que pueden "arrastrar" la curva de ajuste y alterar drásticamente los coeficientes.
+
+```{r}
+cooks_d <- cooks.distance(modelo_completo)
+cut_off <- 4 / nrow(entrenamiento) 
+
+cooks_df <- data.frame(Observation = 1:length(cooks_d), CooksDistance = cooks_d)
+
+ggplot(cooks_df, aes(x = Observation, y = CooksDistance)) +
+  geom_point(alpha = 0.2, color = "steelblue") +
+  geom_hline(yintercept = cut_off, color = "red", linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Distancia de Cook", subtitle = "Línea roja: umbral de influencia")
+```
+
+7. **Extra: Prueba de Bondad de Ajuste (Hosmer-Lemeshow):** Una vez confirmadas las asunciones, debemos validar si el modelo general "se ajusta" bien a los datos. La prueba estadística por excelencia para la regresión logística es el **Test de Hosmer-Lemeshow**.
+
+```{r}
+library(ResourceSelection)
+
+# Convertir factor a 0 y 1 para el test (asumiendo que "No diabético" es el primero)
+y_numeric <- as.numeric(entrenamiento$diabetes_binaria) - 1 
+
+# Ejecutar el test
+hoslem_result <- hoslem.test(y_numeric, fitted(modelo_completo), g = 100)
+print(hoslem_result)
+```
+
+La única **asunción que nos da un pequeño problema es la Linealidad** en el Logit (Log-Odds): ya que hay una ligera violación de la linealidad en los extremos del IMC. Sin embargo, el modelo logístico es suficientemente robusto (podría emplearse un modelo GAM en estudios futuros para capturar mejor esta curva). 
+
+**No** tenemos problemas de **multicolinealidad** entre las variables. También confirmamos la **ausencia de valores atípicos influyentes**, ya que la Distancia de Cook máxima en toda la muestra apenas alcanza el valor de 0.0012, muy por debajo del umbral problemático de 1.0 (o 0.5).
+
+El **Test de Hosmer-Lemeshow** arroja un valor $p <<< 0.05$, lo que técnicamente implicaría rechazar la hipótesis nula de un buen ajuste. Sin embargo, en la estadística moderna se sabe que esta prueba es extremadamente sensible al tamaño de la muestra.
+Con un conjunto de entrenamiento de más de $250.000$ observaciones, el test es extremadamente sensible con las probabilidades observadas y esperadas, marcándola como 'estadísticamente significativa' aunque carezca de impacto predictivo real.
+
+Dado el elevado tamaño muestral y los excelentes resultados obtenidos previamente en la Curva ROC (AUC = 0.817), el resultado del test de Hosmer-Lemeshow no tiene tanto peso a nivel estadístico, y no invalida la bondad de ajuste general del modelo.
+
+**Conclusión:**
+
+- A través de la regresión logística y ajustando el umbral correctamente, hemos conseguido un modelo predictivo sólido, con sentido médico y adaptado a los datos. No obstante, basándonos en el Principio de Parsimonia (buscar siempre la solución más simple), un modelo que necesita más de 20 variables para predecir puede ser demasiado complejo para usarlo en el día a día de una consulta médica.
+
+- Por ello, el siguiente paso será aplicar técnicas avanzadas (Elastic Net) para intentar simplificar este modelo. El objetivo será eliminar las variables que aportan menos valor, intentando mantener nuestra buena capacidad de predicción.
+
+## Modelo Avanzado: Elastic Net
+
+Para abordar la complejidad del modelo, se implementa una técnica fundamental de Machine Learning: la Regularización. Este método añade un **término de penalización** a la función de pérdida del modelo para **minimizar** el **uso excesivo de variables**. El enfoque seleccionado es un **Elastic Net con $\alpha = 0.5$**, lo que permite combinar las ventajas de la penalización L1 (Lasso, que elimina variables) y L2 (Ridge, que estabiliza variables correlacionadas).
+
+![L1 y L2 con $\lambda$](captura_elastic_net.png)
+
+```{r}
+library(glmnet)
+library(pROC)
+
+# 1. Definir la fórmula (la misma del modelo completo)
+formula_modelos <- diabetes_binaria ~ presion_arterial_alta + colesterol_alto + 
+                   chequeo_colesterol + imc_valor + ataque_cerebral + ataque_cardiaco + 
+                   actividad_fisica + salud_fisica + salud_general + salud_mental +
+                   seguro_medico + no_acudir_al_medico_por_coste + dificultad_caminar +
+                   fumador + consumo_de_alcohol_alto + consumo_de_fruta + consumo_de_verduras +
+                   sexo + edad_int + nivel_de_educacion + nivel_de_ingresos
+
+# 2. Construir Matrices de Diseño (x) y vectores de respuesta (y)
+# glmnet requiere que la variable 'y' sea numérica (0 y 1) para la familia binomial
+x_train <- model.matrix(formula_modelos, data = entrenamiento)[, -1] # El -1 quita el intercepto base
+y_train <- ifelse(entrenamiento$diabetes_binaria == "Diabético", 1, 0)
+
+x_test <- model.matrix(formula_modelos, data = prueba)[, -1]
+y_test <- ifelse(prueba$diabetes_binaria == "Diabético", 1, 0)
+
+# 3. Entrenar el Elastic Net mediante Validación Cruzada
+# alpha = 0.5 define un Elastic Net puro (50% Lasso, 50% Ridge)
+# type.measure = "auc" le dice al modelo que busque el lambda que maximice el Área Bajo la Curva
+set.seed(123)
+cv_elastic <- cv.glmnet(x = x_train, y = y_train, family = "binomial", 
+                        alpha = 0.5, type.measure = "auc")
+
+# 4. Mostrar el hiperparámetro óptimo
+cat("El hiperparámetro lambda óptimo que maximiza el AUC es:", cv_elastic$lambda.min, "\n")
+
+# 5. Extraer los coeficientes penalizados (Principio de Parsimonia)
+# Verás que algunas variables tendrán un punto ( . ) indicando que han sido eliminadas (coeficiente = 0)
+coef_elastic <- coef(cv_elastic, s = "lambda.min")
+print(coef_elastic)
+
+# 6. Evaluación en el conjunto de prueba (Predicción y ROC/AUC)
+prob_pred_elastic <- predict(cv_elastic, newx = x_test, s = "lambda.min", type = "response")
+
+roc_elastic <- roc(y_test, as.numeric(prob_pred_elastic))
+
+# Graficar la Curva ROC comparativa (opcional, pero queda muy visual)
+plot(roc_elastic, main = paste("Curva ROC Elastic Net - AUC:", round(auc(roc_elastic), 3)),
+     col = "forestgreen", lwd = 3, print.auc = TRUE)
+```
+
+**Resultados de la regularización:**
+
+1. **Hiperparámetro Óptimo:** La validación cruzada determinó que el valor $\lambda = 0.000893$ es el que maximiza el Área Bajo la Curva (AUC). Al ser un conjunto de datos tan grande, el algoritmo requiere una penalización matemática muy sutil para optimizar el modelo.
+
+2. **Selección de Variables (Efecto Lasso):** La penalización ha identificado y eliminado las variables redundantes. Reduciendo sus coeficientes a 0 y eliminandolas (indicadas con un `.` en la matriz de dispersión). Entre ellas:
+
+  - `nivel_de_ingresos15k - 20k`
+  - `nivel_de_ingresos20k - 25k`
+  - `nivel_de_educacionSecundaria (Completa)`
+  - `fumadorSí`
+
+3. **Efecto Ridge:** Variables que en el modelo clásico mostraron ser estadísticamente no significativas, como salud_mental, no han sido eliminadas por completo pero los coeficientes se reducen de manera considerable (acercandose a 0).
+
+## Conclusión Final del Modelo Predictivo
+
+Al evaluar este nuevo modelo parsimonioso en el conjunto de prueba, la Curva ROC nos da un AUC de 0.817. Es decir, logramos exactamente el mismo resultado que con el modelo anterior, pero sin necesidad de usar todas las variables.
+
+Esto demuestra el éxito del análisis: hemos logrado simplificar el modelo sin perder nada de su capacidad de predicción. Al eliminar las variables que no aportaban valor real, hemos conseguido una herramienta médica más sencilla, rápida y fácil de interpretar.
+
+En definitiva, aplicar Elastic Net ha sido la estrategia ideal. Nos ha permitido pasar de un modelo matemático pesado a un algoritmo ágil y directo, perfecto para aplicarse en un problema real de salud pública.
+
+---
+
+---
+
+# 5. Conclusión General del Proyecto
+
+El desarrollo de este proyecto ha permitido realizar un recorrido analítico completo y riguroso sobre un dataset masivo de casi 250.000 registros, partiendo desde la limpieza y refactorización inicial hasta la implementación de técnicas de inferencia estadística y modelado predictivo avanzado.
+
+A través de las distintas fases del estudio, se han extraído las siguientes conclusiones fundamentales:
+
+- **Inferencia Estadística Robusta:** La exploración de los datos y las pruebas de hipótesis confirmaron empíricamente la estrecha relación entre los factores metabólicos y sociodemográficos con la diabetes. Ante la inviabilidad de usar un ANOVA clásico por el incumplimiento de supuestos (normalidad y homocedasticidad), la aplicación de métodos robustos no paramétricos (Test de Kruskal-Wallis y el Modelo ART para interacciones) garantizó la validez matemática de los hallazgos. Se demostró de forma concluyente que la combinación de un diagnóstico de diabetes y la falta de actividad física es el factor más determinante en los rangos superiores del Índice de Masa Corporal (IMC).
+
+- **Modelo Predictivo Adaptado:** La regresión logística múltiple estableció una línea base de predicción excelente, logrando una capacidad de discriminación alta con un AUC de 0.817. Sin embargo, la evaluación crítica de la matriz de confusión evidenció que utilizar un umbral probabilístico estático de corte penaliza severamente el rendimiento en clases desbalanceadas. La optimización mediante el Índice de Youden solucionó este problema, disparando la Sensibilidad al ~80% y transformando un simple algoritmo matemático en una verdadera herramienta predictiva de descarte (screening).
+
+- **Principio de Parsimonia:** La fase final de Machine Learning mediante regularización Elastic Net cumplió con el objetivo de optimización analítica. Al aplicar una penalización estratégica, se logró purgar el modelo de variables redundantes o carentes de significancia clínica, pero conservando exactamente el mismo poder discriminativo (AUC = 0.817).
